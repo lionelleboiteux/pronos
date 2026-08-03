@@ -181,17 +181,15 @@ pair is additionally proven against the real API and real Postgres by
 
 ## 6. Flags for the product owner
 
-1. **NFR-RATE-01's threshold is an assumption, not an agreed number.**
-   `02-architecture.v1.md` §7 leaves it as "e.g. N/minute/IP". This suite
-   assumes **10 requests per minute per IP** as a clearly-labelled placeholder
-   (`ASSUMED_LIMIT` in `tests/unit/submitPrediction.test.ts`, and
+1. **RESOLVED.** NFR-RATE-01's threshold was an assumption, not an agreed
+   number — `02-architecture.v1.md` §7 left it as "e.g. N/minute/IP". This
+   suite assumed **10 requests per minute per IP** as a clearly-labelled
+   placeholder (`ASSUMED_LIMIT` in `tests/unit/submitPrediction.test.ts`, and
    `SUBMIT_RATE_LIMIT_PER_MINUTE` in the expected `src/api/rateLimit.ts`).
-   **This number needs product-owner confirmation before green.** The
-   behavioural tests are written against the constant, so confirming a
-   different number changes one value, not the tests. Note the interaction
-   worth deciding on: a household or office sharing one NAT'd IP would share
-   the budget, and 10/minute is generous for a human but tight for a family
-   filling in three leagues at once on the same connection.
+   **Confirmed by Lio on 2026-08-03: 10 requests/minute/IP stands as the
+   agreed value**, despite the noted household/office shared-IP tradeoff.
+   No test changes needed — the tests were already written against the
+   constant.
 
 2. **RESOLVED.** `contracts/openapi.yaml` declares 8 operations;
    `02-architecture.v1.md` §5 said "9 operations". Schemathesis independently
