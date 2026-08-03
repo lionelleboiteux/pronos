@@ -231,3 +231,32 @@ create table if not exists telemetry_events (
 
 create index if not exists telemetry_events_type_time_idx on telemetry_events (event_type, occurred_at);
 create index if not exists telemetry_events_league_gw_idx on telemetry_events (league_id, gameweek_id);
+
+-- Row Level Security — added at the red gate (NFR-RLS-01/02), because the
+-- threat model (02-architecture.v1.md §7, Tampering) depends on it: "RLS
+-- blocks public INSERT/UPDATE on predictions/games/etc. entirely, so there's
+-- no PostgREST bypass" of the Edge Function's kickoff-time check. The
+-- original architecture-gate schema omitted the actual RLS statements — a
+-- real gap in a frozen artifact, caught by the red-gate test suite rather
+-- than after release.
+--
+-- No policies are granted to `anon` or `authenticated` on any table below.
+-- Enabling RLS with zero policies denies all access to those roles by
+-- default; only Supabase's `service_role` key (used exclusively by Edge
+-- Functions, which bypasses RLS entirely) can read or write these tables.
+-- There is deliberately no direct PostgREST access path for the frontend —
+-- every read and write goes through an Edge Function (02-architecture.v1.md
+-- §5), so a locked-down-by-default table is the correct shape, not a gap to
+-- fill in with public read policies later.
+alter table leagues enable row level security;
+alter table seasons enable row level security;
+alter table teams enable row level security;
+alter table players enable row level security;
+alter table gameweeks enable row level security;
+alter table games enable row level security;
+alter table predictions enable row level security;
+alter table prediction_scores enable row level security;
+alter table league_gameweek_standings enable row level security;
+alter table overall_standings enable row level security;
+alter table duplicate_flags enable row level security;
+alter table telemetry_events enable row level security;
