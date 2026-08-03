@@ -1,0 +1,153 @@
+{
+  "schema": "pdlc/v2",
+  "idea": {
+    "id": "jeu-des-pronos",
+    "title": "Jeu des Pronos - consolidation and automation",
+    "spec_author": "Lionel Le Boiteux",
+    "spec_date": "2026-08-03",
+    "branch": "feat/jeu-des-pronos",
+    "adopted": "2026-08-03T19:15:45Z"
+  },
+  "success": {
+    "metrics": [
+      {
+        "name": "weekly manual admin time on gameweek open/close and scoring",
+        "baseline": "unknown - must be measured before release (self-reported estimate is ~1 hour/week)",
+        "target": "under 5 minutes per week",
+        "by_when": "mid/late August 2026, before the new season starts"
+      }
+    ],
+    "counter_metric": "scoring and classement accuracy must not decrease",
+    "required_events": [
+      "match_locked",
+      "prediction_submitted",
+      "prediction_rejected_late",
+      "gameweek_opened",
+      "gameweek_closed",
+      "scoring_run_completed",
+      "duplicate_flagged",
+      "admin_manual_intervention"
+    ]
+  },
+  "config": {
+    "stacks": [
+      "typescript",
+      "python"
+    ],
+    "coverage_branch_min": 80,
+    "parallel_subagents_max": 3
+  },
+  "gates": {
+    "adopt": {
+      "status": "passed",
+      "artifacts": [
+        {
+          "path": "pdlc/jeu-des-pronos/00-product-spec.docx",
+          "sha256": "4f34787ce728045763beccbb3c7ba998fc48f32944633153fc217dbcef613f64",
+          "recorded": "2026-08-03T19:15:45Z"
+        },
+        {
+          "path": "spec-header.json",
+          "sha256": "981793a4605a727cfc7066d2aa8fead29dee335af6756508f66d6ca477be9e41",
+          "recorded": "2026-08-03T19:15:45Z"
+        }
+      ],
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "n/a",
+      "at": "2026-08-03T19:15:45Z",
+      "notes": "adopted from jeu-des-pronos-product-spec.docx"
+    },
+    "architecture": {
+      "status": "pending",
+      "artifacts": [],
+      "actor": null,
+      "model": null,
+      "at": null,
+      "notes": null
+    },
+    "red": {
+      "status": "pending",
+      "artifacts": [],
+      "actor": null,
+      "model": null,
+      "at": null,
+      "notes": null
+    },
+    "green": {
+      "status": "pending",
+      "artifacts": [],
+      "actor": null,
+      "model": null,
+      "at": null,
+      "notes": null
+    },
+    "verify": {
+      "status": "pending",
+      "artifacts": [],
+      "actor": null,
+      "model": null,
+      "at": null,
+      "notes": null
+    },
+    "polish": {
+      "status": "pending",
+      "artifacts": [],
+      "actor": null,
+      "model": null,
+      "at": null,
+      "notes": null
+    },
+    "ship": {
+      "status": "pending",
+      "artifacts": [],
+      "actor": null,
+      "model": null,
+      "at": null,
+      "notes": null
+    },
+    "pipeline": {
+      "status": "pending",
+      "artifacts": [],
+      "actor": null,
+      "model": null,
+      "at": null,
+      "notes": null
+    },
+    "dashboard": {
+      "status": "pending",
+      "artifacts": [],
+      "actor": null,
+      "model": null,
+      "at": null,
+      "notes": null
+    },
+    "release": {
+      "status": "pending",
+      "artifacts": [],
+      "actor": null,
+      "model": null,
+      "at": null,
+      "notes": null
+    },
+    "review": {
+      "status": "pending",
+      "artifacts": [],
+      "actor": null,
+      "model": null,
+      "at": null,
+      "notes": null
+    }
+  },
+  "children": [],
+  "overrides": [],
+  "reviews": [],
+  "log": [
+    {
+      "at": "2026-08-03T19:15:45Z",
+      "event": "adopt",
+      "idea": "jeu-des-pronos",
+      "spec": "jeu-des-pronos-product-spec.docx",
+      "actor": "lionel.leboiteux@gmail.com"
+    }
+  ]
+}
