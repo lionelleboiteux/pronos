@@ -58,12 +58,43 @@
       "notes": "adopted from jeu-des-pronos-product-spec.docx"
     },
     "architecture": {
-      "status": "pending",
-      "artifacts": [],
-      "actor": null,
-      "model": null,
-      "at": null,
-      "notes": null
+      "status": "passed",
+      "artifacts": [
+        {
+          "path": "pdlc/jeu-des-pronos/02-architecture.v1.md",
+          "sha256": "7b1cef7ed8d12d54b54495cb721d4c33f8b3917bf6688ad3ccda296861fe36f7",
+          "recorded": "2026-08-03T20:00:46Z"
+        },
+        {
+          "path": "pdlc/jeu-des-pronos/adr/0001-supabase-postgres-edge-functions-pg-cron.md",
+          "sha256": "26b5e0760ea66b7420ed28f32683e1aa0d20f5b0416cc7727b40b41156ce1ead",
+          "recorded": "2026-08-03T20:00:46Z"
+        },
+        {
+          "path": "pdlc/jeu-des-pronos/adr/0002-pseudo-as-identity.md",
+          "sha256": "8cd8a0db08a9e9942961d63e1b7ea76e401d644012d10478adac26f10beff907",
+          "recorded": "2026-08-03T20:00:46Z"
+        },
+        {
+          "path": "pdlc/jeu-des-pronos/adr/0003-migration-discipline-as-backup-substitute.md",
+          "sha256": "4804597957d66332111d7d493ea140fc8da3d26fe3bac323d73f8acb88fe5afe",
+          "recorded": "2026-08-03T20:00:46Z"
+        },
+        {
+          "path": "pdlc/jeu-des-pronos/contracts/openapi.yaml",
+          "sha256": "098947bc6e0fc7da538963d67c92958245a1d635b6f81039c8cd7518c47d80af",
+          "recorded": "2026-08-03T20:00:46Z"
+        },
+        {
+          "path": "pdlc/jeu-des-pronos/contracts/db-schema.sql",
+          "sha256": "439be1cf660b7b430824e0f376302172a70ffbbc2eeb66207e931f9f684333a1",
+          "recorded": "2026-08-03T20:00:46Z"
+        }
+      ],
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "sonnet",
+      "at": "2026-08-03T20:00:46Z",
+      "notes": "Supabase Postgres+Edge Functions+pg_cron, built on Lio's existing schema; sliced into core-engine/fixture-ingestion/player-identity-and-admin-review"
     },
     "red": {
       "status": "pending",
@@ -138,7 +169,11 @@
       "notes": null
     }
   },
-  "children": [],
+  "children": [
+    "core-engine",
+    "fixture-ingestion",
+    "player-identity-and-admin-review"
+  ],
   "overrides": [],
   "reviews": [],
   "log": [
@@ -148,6 +183,31 @@
       "idea": "jeu-des-pronos",
       "spec": "jeu-des-pronos-product-spec.docx",
       "actor": "lionel.leboiteux@gmail.com"
+    },
+    {
+      "at": "2026-08-03T19:58:17Z",
+      "event": "split",
+      "children": [
+        "core-engine",
+        "fixture-ingestion",
+        "player-identity-and-admin-review"
+      ],
+      "actor": "lionel.leboiteux@gmail.com"
+    },
+    {
+      "at": "2026-08-03T20:00:46Z",
+      "event": "pass",
+      "gate": "architecture",
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "sonnet",
+      "artifacts": [
+        "pdlc/jeu-des-pronos/02-architecture.v1.md",
+        "pdlc/jeu-des-pronos/adr/0001-supabase-postgres-edge-functions-pg-cron.md",
+        "pdlc/jeu-des-pronos/adr/0002-pseudo-as-identity.md",
+        "pdlc/jeu-des-pronos/adr/0003-migration-discipline-as-backup-substitute.md",
+        "pdlc/jeu-des-pronos/contracts/openapi.yaml",
+        "pdlc/jeu-des-pronos/contracts/db-schema.sql"
+      ]
     }
   ]
 }
