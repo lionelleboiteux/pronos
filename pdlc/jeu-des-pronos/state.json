@@ -97,20 +97,37 @@
       "notes": "Supabase Postgres+Edge Functions+pg_cron, built on Lio's existing schema; sliced into core-engine/fixture-ingestion/player-identity-and-admin-review"
     },
     "red": {
-      "status": "pending",
-      "artifacts": [],
-      "actor": null,
-      "model": null,
-      "at": null,
-      "notes": null
+      "status": "passed",
+      "artifacts": [
+        {
+          "path": "pdlc/jeu-des-pronos/03-red-evidence.v1.md",
+          "sha256": "71212aeea36c016b23f258359bdf9b53b6d124c1bc672d3752af30e3229987c7",
+          "recorded": "2026-08-03T20:58:05Z"
+        },
+        {
+          "path": "pdlc/jeu-des-pronos/traceability.md",
+          "sha256": "93965a6c6157134cd275bf453c2b8f868d62cd2eb1127bdb49d480e9509b46d7",
+          "recorded": "2026-08-03T20:58:05Z"
+        }
+      ],
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "opus",
+      "at": "2026-08-03T20:58:05Z",
+      "notes": "Amendment: NFR-RATE-01's 10 req/min/IP threshold confirmed by Lio on 2026-08-03 (was flagged assumed at initial pass). No test changes needed."
     },
     "green": {
-      "status": "pending",
-      "artifacts": [],
-      "actor": null,
-      "model": null,
-      "at": null,
-      "notes": null
+      "status": "passed",
+      "artifacts": [
+        {
+          "path": "pdlc/jeu-des-pronos/04-green-evidence.v1.md",
+          "sha256": "2ee418c860dec79b67775b714a03968be9f72b0bce4f0f6c7872e9d326b3993d",
+          "recorded": "2026-08-04T21:24:00Z"
+        }
+      ],
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "opus",
+      "at": "2026-08-04T21:24:00Z",
+      "notes": "118/118 tests green (was 117 failing/1 passing at red gate), 88.7% branch coverage (target 80%), tsc clean. Implemented by bob-implementer, continuing partial work from a session-limit-terminated prior run. One flagged gap (NFR-RATE-01 limiter not wired into live server, conflicted with contract-fuzz traffic shape) resolved after product-owner review: fixed test harness realism (per-request simulated source IP via Schemathesis hook) rather than shipping the gap, then independently verified real enforcement against a live server (11th same-IP request -> 429, different-IP request unaffected)."
     },
     "verify": {
       "status": "pending",
@@ -207,6 +224,38 @@
         "pdlc/jeu-des-pronos/adr/0003-migration-discipline-as-backup-substitute.md",
         "pdlc/jeu-des-pronos/contracts/openapi.yaml",
         "pdlc/jeu-des-pronos/contracts/db-schema.sql"
+      ]
+    },
+    {
+      "at": "2026-08-03T20:51:27Z",
+      "event": "pass",
+      "gate": "red",
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "opus",
+      "artifacts": [
+        "pdlc/jeu-des-pronos/03-red-evidence.v1.md",
+        "pdlc/jeu-des-pronos/traceability.md"
+      ]
+    },
+    {
+      "at": "2026-08-03T20:58:05Z",
+      "event": "pass",
+      "gate": "red",
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "opus",
+      "artifacts": [
+        "pdlc/jeu-des-pronos/03-red-evidence.v1.md",
+        "pdlc/jeu-des-pronos/traceability.md"
+      ]
+    },
+    {
+      "at": "2026-08-04T21:24:00Z",
+      "event": "pass",
+      "gate": "green",
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "opus",
+      "artifacts": [
+        "pdlc/jeu-des-pronos/04-green-evidence.v1.md"
       ]
     }
   ]

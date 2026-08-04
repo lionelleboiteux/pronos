@@ -4,3 +4,4 @@ node_modules/
 coverage/
 .vitest-tmp/
 .schemathesis/
+__pycache__/
