@@ -13,12 +13,6 @@ import { OPENAPI_PATH, REPO_ROOT } from './openapi.js';
 
 export const SCHEMATHESIS_BIN = path.join(REPO_ROOT, '.venv-contract', 'bin', 'schemathesis');
 
-// Gives every fuzzed request its own simulated source IP (X-Forwarded-For),
-// so the per-IP rate limiter sees the distinct-user traffic it is meant to
-// see, rather than the single-process burst Schemathesis actually sends. See
-// schemathesis_hooks.py for why this is a harness fix, not a test change.
-const HOOKS_PATH = path.join(REPO_ROOT, 'tests', 'support', 'schemathesis_hooks.py');
-
 export type SchemathesisResult = { exitCode: number; output: string };
 
 export function runSchemathesis(opts: {
@@ -54,7 +48,7 @@ export function runSchemathesis(opts: {
     cwd: REPO_ROOT,
     encoding: 'utf8',
     timeout: 120_000,
-    env: { ...process.env, NO_COLOR: '1', SCHEMATHESIS_HOOKS: HOOKS_PATH },
+    env: { ...process.env, NO_COLOR: '1' },
   });
 
   return {

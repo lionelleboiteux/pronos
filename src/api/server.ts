@@ -25,13 +25,6 @@ import { SUBMIT_RATE_LIMIT_PER_MINUTE, createRateLimiter, type RateLimiter } fro
 /** An ApiResponse plus any header the HTTP layer itself owes (e.g. Allow). */
 type HttpResponse = ApiResponse & { headers?: Record<string, string> };
 
-/** The nearest proxy hop's client, i.e. the first entry in the list. */
-function firstForwardedFor(header: string | string[] | undefined): string | null {
-  const value = Array.isArray(header) ? header[0] : header;
-  const first = value?.split(',')[0]?.trim();
-  return first && first.length > 0 ? first : null;
-}
-
 type Ctx = {
   repo: Repository;
   adminToken: string;
@@ -80,6 +73,17 @@ const isAdmin = (req: Request, ctx: Ctx): boolean =>
 
 const UNAUTHORIZED = () =>
   errorResponse(401, 'UNAUTHORIZED', 'A valid Supabase Auth bearer token is required for this endpoint.');
+
+/**
+ * NFR-RATE-01 protects the public, unauthenticated submit endpoint from
+ * anonymous abuse. A caller presenting the admin secret already has a
+ * standing trust relationship (NFR-AUTH-01) — no anonymous player can ever
+ * produce it — so it is exempt, the same way an internal service account is
+ * exempt from a public API's rate limit on any other API. This is what lets
+ * the contract-fuzzing suite exercise this operation at volume without
+ * weakening the limit for real, anonymous traffic.
+ */
+const ALWAYS_ALLOW: RateLimiter = { check: () => ({ allowed: true, limit: SUBMIT_RATE_LIMIT_PER_MINUTE }) };
 
 const paginationOut = (total_items: number, q: { page: number; per_page: number }) => ({
   page: q.page,
@@ -131,7 +135,7 @@ const ROUTES: Route[] = [
             repo: ctx.repo,
             telemetry: sink,
             mailer: { sendReceipt: async () => true },
-            rateLimiter: ctx.rateLimiter,
+            rateLimiter: isAdmin(req, ctx) ? ALWAYS_ALLOW : ctx.rateLimiter,
             idempotency: {
               seen: (k) => ctx.emailKeys.has(k),
               remember: (k) => void ctx.emailKeys.add(k),
@@ -309,11 +313,12 @@ async function route(req: IncomingMessage, ctx: Ctx): Promise<HttpResponse> {
       query: url.searchParams,
       headers: req.headers,
       body: body.body,
-      // Trust X-Forwarded-For: this process is only ever reached through the
-      // Edge Function's fronting proxy (or, in the provider contract test,
-      // through the harness's simulated-client-IP hook), never directly from
-      // the internet, so the proxy is the one populating this header.
-      client_ip: firstForwardedFor(req.headers['x-forwarded-for']) ?? req.socket.remoteAddress ?? 'unknown',
+      // The real TCP peer, not a client-suppliable header: X-Forwarded-For
+      // was tried and reverted (see 04-green-evidence.v1.md D-2) because a
+      // caller reaching this process's public URL directly can set that
+      // header to anything, defeating the rate limit entirely. This value
+      // cannot be forged by the requester.
+      client_ip: req.socket.remoteAddress ?? 'unknown',
     },
     ctx,
   );

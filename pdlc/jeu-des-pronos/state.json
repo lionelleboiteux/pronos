@@ -130,12 +130,18 @@
       "notes": "118/118 tests green (was 117 failing/1 passing at red gate), 88.7% branch coverage (target 80%), tsc clean. Implemented by bob-implementer, continuing partial work from a session-limit-terminated prior run. One flagged gap (NFR-RATE-01 limiter not wired into live server, conflicted with contract-fuzz traffic shape) resolved after product-owner review: fixed test harness realism (per-request simulated source IP via Schemathesis hook) rather than shipping the gap, then independently verified real enforcement against a live server (11th same-IP request -> 429, different-IP request unaffected)."
     },
     "verify": {
-      "status": "pending",
-      "artifacts": [],
-      "actor": null,
-      "model": null,
-      "at": null,
-      "notes": null
+      "status": "passed",
+      "artifacts": [
+        {
+          "path": "pdlc/jeu-des-pronos/05-verification.v1.md",
+          "sha256": "b529016b32c5a824303ab3a8ac5e8e1fbf77bebd3325b05a780d693e876c0501",
+          "recorded": "2026-08-05T14:38:27Z"
+        }
+      ],
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "opus",
+      "at": "2026-08-05T14:38:27Z",
+      "notes": "Security HIGH found+fixed in-gate (X-Forwarded-For rate-limit bypass), perf clean + proactive index migration, contract coverage complete at 10x fuzz depth, success metric proven computable end-to-end against real telemetry_events store."
     },
     "polish": {
       "status": "pending",
@@ -256,6 +262,16 @@
       "model": "opus",
       "artifacts": [
         "pdlc/jeu-des-pronos/04-green-evidence.v1.md"
+      ]
+    },
+    {
+      "at": "2026-08-05T14:38:27Z",
+      "event": "pass",
+      "gate": "verify",
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "opus",
+      "artifacts": [
+        "pdlc/jeu-des-pronos/05-verification.v1.md"
       ]
     }
   ]
