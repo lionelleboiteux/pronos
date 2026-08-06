@@ -51,7 +51,7 @@ export type SubmitDeps = {
   rateLimiter: { check(key: string, now: Date): { allowed: boolean; limit: number } };
   idempotency: {
     seen(key: string): boolean;
-    remember(key: string, now: Date): void;
+    remember(key: string): void;
   };
 };
 
@@ -154,7 +154,7 @@ export async function handleSubmitPrediction(
       predicted_home_score: parsed.data.predicted_home_score,
       predicted_away_score: parsed.data.predicted_away_score,
     });
-    if (req.idempotency_key !== undefined) deps.idempotency.remember(req.idempotency_key, now);
+    if (req.idempotency_key !== undefined) deps.idempotency.remember(req.idempotency_key);
   }
 
   deps.telemetry.emit(

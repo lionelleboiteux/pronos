@@ -379,7 +379,7 @@ export type SubmitDeps = {
   rateLimiter: { check(key: string, now: Date): { allowed: boolean; limit: number } };
   idempotency: {
     seen(key: string): boolean;
-    remember(key: string, now: Date): void;
+    remember(key: string): void;
   };
 };
 

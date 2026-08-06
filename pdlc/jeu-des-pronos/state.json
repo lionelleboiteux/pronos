@@ -144,12 +144,18 @@
       "notes": "Security HIGH found+fixed in-gate (X-Forwarded-For rate-limit bypass), perf clean + proactive index migration, contract coverage complete at 10x fuzz depth, success metric proven computable end-to-end against real telemetry_events store."
     },
     "polish": {
-      "status": "pending",
-      "artifacts": [],
-      "actor": null,
-      "model": null,
-      "at": null,
-      "notes": null
+      "status": "passed",
+      "artifacts": [
+        {
+          "path": "pdlc/jeu-des-pronos/06-polish-evidence.v1.md",
+          "sha256": "97918f0033a901886264c0757d3f9aec5bbfd30dcb02ccbbd8c23c716f936093",
+          "recorded": "2026-08-05T20:12:25Z"
+        }
+      ],
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "opus",
+      "at": "2026-08-05T20:12:25Z",
+      "notes": "1 mechanical fix (dead idempotency param) applied and independently re-verified (118/118, tsc clean). Judgment calls (2 over-length functions the janitor missed, kebab-case filenames, function-split candidates) listed as recommendations, not applied."
     },
     "ship": {
       "status": "pending",
@@ -272,6 +278,16 @@
       "model": "opus",
       "artifacts": [
         "pdlc/jeu-des-pronos/05-verification.v1.md"
+      ]
+    },
+    {
+      "at": "2026-08-05T20:12:25Z",
+      "event": "pass",
+      "gate": "polish",
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "opus",
+      "artifacts": [
+        "pdlc/jeu-des-pronos/06-polish-evidence.v1.md"
       ]
     }
   ]
