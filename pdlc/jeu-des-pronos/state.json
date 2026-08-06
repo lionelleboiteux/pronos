@@ -158,12 +158,18 @@
       "notes": "1 mechanical fix (dead idempotency param) applied and independently re-verified (118/118, tsc clean). Judgment calls (2 over-length functions the janitor missed, kebab-case filenames, function-split candidates) listed as recommendations, not applied."
     },
     "ship": {
-      "status": "pending",
-      "artifacts": [],
-      "actor": null,
-      "model": null,
-      "at": null,
-      "notes": null
+      "status": "passed",
+      "artifacts": [
+        {
+          "path": "pdlc/jeu-des-pronos/07-pr-body.md",
+          "sha256": "4bc1c9be10afe62e6b4613b61391c5f1e40f2d4750202be23a453ef4e3f65784",
+          "recorded": "2026-08-06T13:08:05Z"
+        }
+      ],
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "opus",
+      "at": "2026-08-06T13:08:05Z",
+      "notes": "Committed df02319 on feat/jeu-des-pronos, pushed, PR #1 opened against main: https://github.com/lionelleboiteux/pronos/pull/1"
     },
     "pipeline": {
       "status": "pending",
@@ -288,6 +294,16 @@
       "model": "opus",
       "artifacts": [
         "pdlc/jeu-des-pronos/06-polish-evidence.v1.md"
+      ]
+    },
+    {
+      "at": "2026-08-06T13:08:05Z",
+      "event": "pass",
+      "gate": "ship",
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "opus",
+      "artifacts": [
+        "pdlc/jeu-des-pronos/07-pr-body.md"
       ]
     }
   ]
