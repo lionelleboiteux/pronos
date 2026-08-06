@@ -1,0 +1,28 @@
+{
+  "idea_id": "jeu-des-pronos",
+  "title": "Jeu des Pronos - consolidation and automation",
+  "author": "Lionel Le Boiteux",
+  "date": "2026-08-03",
+  "success_metrics": [
+    {
+      "name": "weekly manual admin time on gameweek open/close and scoring",
+      "baseline": "unknown - must be measured before release (self-reported estimate is ~1 hour/week)",
+      "target": "under 5 minutes per week",
+      "by_when": "mid/late August 2026, before the new season starts"
+    }
+  ],
+  "counter_metric": "scoring and classement accuracy must not decrease",
+  "required_events": [
+    "match_locked",
+    "prediction_submitted",
+    "prediction_rejected_late",
+    "gameweek_opened",
+    "gameweek_closed",
+    "scoring_run_completed",
+    "duplicate_flagged",
+    "admin_manual_intervention"
+  ],
+  "acceptance_criteria_count": "14",
+  "out_of_scope": "mini-leagues, native mobile app, beat-the-robot AI feature, monetisation, website/Wix migration",
+  "_source": "jeu-des-pronos-product-spec.docx"
+}

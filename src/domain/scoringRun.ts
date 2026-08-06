@@ -1,0 +1,105 @@
+/**
+ * Morning-after scoring run (AC-08, AC-14) — the pg_cron job that turns a
+ * finished gameweek into a classement. `now` is injected, and the run is a
+ * no-op once its scoring_run_completed event already exists, so a retried
+ * cron tick cannot update the classement twice.
+ */
+
+import { scoreGameweek, type MatchScoringInput } from './scoring.ts';
+import { isLocked } from './lock.ts';
+import { buildTelemetryEvent, type TelemetryEvent } from '../telemetry/events.ts';
+
+export type ScoringRunPlayer = {
+  player_id: string;
+  pseudo: string;
+  matches: MatchScoringInput[];
+};
+
+export type ScoringRunInput = {
+  now: Date;
+  league_id: string;
+  gameweek_id: string;
+  /** Kickoff of the gameweek's last scheduled match. */
+  last_kickoff_at: Date;
+  /** True when a scoring_run_completed event already exists for this gameweek. */
+  already_completed: boolean;
+  players: ScoringRunPlayer[];
+};
+
+export type StandingsRow = {
+  player_id: string;
+  pseudo: string;
+  points: number;
+  rank: number;
+  predictions_count: number;
+  correct_results_count: number;
+  exact_scores_count: number;
+};
+
+export type ScoringRunOutput = {
+  ran: boolean;
+  skipped_reason?: 'already_completed' | 'gameweek_not_finished';
+  standings: StandingsRow[];
+  players_scored_count: number;
+  events: TelemetryEvent[];
+};
+
+const skipped = (reason: 'already_completed' | 'gameweek_not_finished'): ScoringRunOutput => ({
+  ran: false,
+  skipped_reason: reason,
+  standings: [],
+  players_scored_count: 0,
+  events: [],
+});
+
+/** Standard competition ranking: equal point totals share the better rank. */
+function rank(
+  scored: Array<Omit<StandingsRow, 'rank'>>,
+): StandingsRow[] {
+  const ordered = [...scored].sort((a, b) => b.points - a.points);
+  let currentRank = 0;
+  let previousPoints: number | null = null;
+  return ordered.map((row, index) => {
+    if (previousPoints === null || row.points !== previousPoints) {
+      currentRank = index + 1;
+      previousPoints = row.points;
+    }
+    return { ...row, rank: currentRank };
+  });
+}
+
+export function runScoring(input: ScoringRunInput): ScoringRunOutput {
+  if (input.already_completed) return skipped('already_completed');
+  if (!isLocked(input.now, input.last_kickoff_at)) return skipped('gameweek_not_finished');
+
+  const standings = rank(
+    input.players.map((player) => {
+      const total = scoreGameweek(player.matches);
+      return {
+        player_id: player.player_id,
+        pseudo: player.pseudo,
+        points: total.points,
+        predictions_count: total.scored_match_count,
+        correct_results_count: total.correct_results_count,
+        exact_scores_count: total.exact_scores_count,
+      };
+    }),
+  );
+
+  return {
+    ran: true,
+    standings,
+    players_scored_count: standings.length,
+    events: [
+      buildTelemetryEvent('scoring_run_completed', {
+        league: input.league_id,
+        gameweek: input.gameweek_id,
+        run_at: input.now.toISOString(),
+        players_scored_count: standings.length,
+        league_id: input.league_id,
+        gameweek_id: input.gameweek_id,
+        occurred_at: input.now.toISOString(),
+      }),
+    ],
+  };
+}
