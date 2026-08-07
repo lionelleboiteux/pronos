@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jeu des Pronos — benefit dashboard</title>
+<style>
+  :root {
+    --bg: #f5f5f4;
+    --card: #ffffff;
+    --ink: #1c1917;
+    --muted: #6b6560;
+    --border: #e7e5e4;
+    --good: #15803d;
+    --bad: #b91c1c;
+    --accent: #2563eb;
+    --warn-bg: #fef3c7;
+    --warn-ink: #78350f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1917;
+      --card: #292524;
+      --ink: #f5f5f4;
+      --muted: #a8a29e;
+      --border: #44403c;
+      --good: #4ade80;
+      --bad: #f87171;
+      --accent: #60a5fa;
+      --warn-bg: #451a03;
+      --warn-ink: #fde68a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 1.5rem;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.4;
+  }
+  h1 { font-size: 1.35rem; margin: 0 0 0.25rem; }
+  .subtitle { color: var(--muted); font-size: 0.9rem; margin: 0 0 1.5rem; }
+  .as-of {
+    display: inline-block;
+    font-size: 0.8rem;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.15rem 0.7rem;
+    margin-bottom: 1.5rem;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+  }
+  .card h2 {
+    font-size: 0.95rem;
+    margin: 0 0 0.75rem;
+    font-weight: 600;
+  }
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    margin-bottom: 0.4rem;
+  }
+  .stat-row .label { color: var(--muted); }
+  .stat-row .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .distance {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.9rem;
+  }
+  .sparkline { margin-top: 0.75rem; display: block; width: 100%; height: 40px; }
+  .empty-note {
+    margin-top: 0.75rem;
+    font-size: 0.82rem;
+    background: var(--warn-bg);
+    color: var(--warn-ink);
+    border-radius: 8px;
+    padding: 0.5rem 0.65rem;
+  }
+  .counter-card {
+    background: var(--card);
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+    padding: 1.25rem;
+  }
+  .counter-card h2 { margin: 0 0 0.5rem; font-size: 1rem; }
+  .counter-status {
+    display: inline-block;
+    font-weight: 700;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+  }
+  .counter-status.ok { background: color-mix(in srgb, var(--good) 20%, transparent); color: var(--good); }
+  .counter-status.regressed { background: color-mix(in srgb, var(--bad) 20%, transparent); color: var(--bad); }
+  .counter-note { margin-top: 0.6rem; font-size: 0.85rem; color: var(--muted); }
+  .error-state {
+    background: var(--card);
+    border: 1px solid var(--bad);
+    color: var(--bad);
+    border-radius: 12px;
+    padding: 1rem;
+  }
+  footer { margin-top: 1.5rem; font-size: 0.75rem; color: var(--muted); }
+</style>
+</head>
+<body>
+  <h1>Jeu des Pronos — benefit dashboard</h1>
+  <p class="subtitle">Tracking the one success metric this project exists to move, against the safety rail it must not break.</p>
+  <span class="as-of" id="as-of">data as of — loading…</span>
+
+  <div id="metrics" class="grid" aria-live="polite">
+    <div class="card"><h2>weekly manual admin time on gameweek open/close and scoring</h2><p>Loading…</p></div>
+  </div>
+
+  <div id="counter" aria-live="polite"></div>
+
+  <footer id="footer"></footer>
+
+<script>
+(function () {
+  var METRICS_URL = 'https://dmytkubjxwwwkroutvdu.supabase.co/functions/v1/dashboard-metrics';
+
+  function fmtDate(iso) {
+    try { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
+    catch (e) { return iso; }
+  }
+
+  function sparkline(series, target) {
+    if (!series || series.length < 2) return '';
+    var w = 260, h = 40, pad = 4;
+    var values = series.map(function (p) { return p.value; }).concat([target]);
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    if (min === max) { min -= 1; max += 1; }
+    var x = function (i) { return pad + (i / (series.length - 1)) * (w - 2 * pad); };
+    var y = function (v) { return h - pad - ((v - min) / (max - min)) * (h - 2 * pad); };
+    var points = series.map(function (p, i) { return x(i) + ',' + y(p.value); }).join(' ');
+    var targetY = y(target);
+    return '<svg class="sparkline" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-label="trend sparkline">' +
+      '<line x1="0" y1="' + targetY + '" x2="' + w + '" y2="' + targetY + '" stroke="currentColor" stroke-dasharray="3,3" stroke-width="1" opacity="0.5"/>' +
+      '<polyline points="' + points + '" fill="none" stroke="currentColor" stroke-width="2"/>' +
+      '</svg>';
+  }
+
+  function distanceSentence(m) {
+    if (m.current === null || m.current === undefined) {
+      return 'Not measurable yet — see note below.';
+    }
+    var diff = m.target_direction === 'down' ? m.current - m.target : m.target - m.current;
+    if (diff <= 0) return 'Target met: ' + m.current + ' ' + m.unit + ' (target ' + m.target + ').';
+    var verb = m.target_direction === 'down' ? 'above' : 'below';
+    return diff.toFixed(1) + ' ' + m.unit + ' ' + verb + ' target, due ' + m.by_when + '.';
+  }
+
+  function renderMetricCard(m) {
+    var hasData = m.series && m.series.length > 0;
+    var spark = hasData ? sparkline(m.series, m.target) : '';
+    var currentText = (m.current === null || m.current === undefined) ? 'no data yet' : m.current + ' ' + m.unit;
+    var html = '<div class="card">' +
+      '<h2>' + m.name + '</h2>' +
+      '<div class="stat-row"><span class="label">Baseline</span><span class="value">' + m.baseline + ' ' + m.unit + '</span></div>' +
+      '<div class="stat-row"><span class="label">Baseline captured</span><span class="value">' + m.baseline_captured + '</span></div>' +
+      '<div class="stat-row"><span class="label">Current</span><span class="value">' + currentText + '</span></div>' +
+      '<div class="stat-row"><span class="label">Target</span><span class="value">' + m.target + ' ' + m.unit + ' by ' + m.by_when + '</span></div>' +
+      spark +
+      (hasData ? '' : '<p class="empty-note">No production events yet — the app went live ' + '2026-08-07' + ' and no gameweek has run through it. This will start filling in once real weekly admin actions happen.</p>') +
+      '<div class="distance">' + distanceSentence(m) + '</div>' +
+      '</div>';
+    return html;
+  }
+
+  function renderCounter(c) {
+    var regressed = c.current > c.baseline;
+    var statusClass = regressed ? 'regressed' : 'ok';
+    var statusText = regressed ? 'REGRESSED' : 'No regression';
+    return '<div class="counter-card">' +
+      '<h2>Safety rail: ' + c.name + '</h2>' +
+      '<span class="counter-status ' + statusClass + '">' + statusText + '</span>' +
+      ' <span>baseline ' + c.baseline + ' → current ' + c.current + ' (' + c.direction + ')</span>' +
+      '<p class="counter-note">' + c.note + '</p>' +
+      '</div>';
+  }
+
+  fetch(METRICS_URL, { cache: 'no-store' })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (data) {
+      document.getElementById('as-of').textContent = 'data as of ' + fmtDate(data.generated_at);
+      document.getElementById('metrics').innerHTML = data.metrics.map(renderMetricCard).join('');
+      document.getElementById('counter').innerHTML = renderCounter(data.counter_metric);
+      document.getElementById('footer').textContent =
+        'jeu-des-pronos · released ' + data.released_at + ' · source: telemetry_events via dashboard-metrics';
+    })
+    .catch(function (err) {
+      document.getElementById('as-of').textContent = 'data as of — unavailable';
+      document.getElementById('metrics').innerHTML =
+        '<div class="error-state">Could not load metrics (' + err.message + '). This dashboard has no cached fallback — if you\'re seeing this, the adapter or database is down, not just quiet.</div>';
+    });
+})();
+</script>
+</body>
+</html>

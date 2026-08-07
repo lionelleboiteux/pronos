@@ -1,0 +1,40 @@
+name: Deploy dashboard to Pages
+
+# Hosts dashboard/index.html (John's benefit dashboard) as a real static
+# HTML page. Supabase can't do this: Edge Functions rewrite any text/html
+# response to text/plain, and public Storage objects get the same downgrade
+# — both confirmed while building this, see 11-dashboard.v1.md. GitHub
+# Pages needs "Deploy from a branch" to point at repo root or /docs only,
+# neither of which fits, so this uses the Actions-based Pages deployment
+# instead, pointed straight at dashboard/.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dashboard/index.html'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dashboard
+      - uses: actions/configure-pages@v5
+      - id: deployment
+        uses: actions/deploy-pages@v4
