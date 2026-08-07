@@ -40,6 +40,10 @@ jobs:
           mkdir -p _site/dashboard
           cp frontend/index.html _site/index.html
           cp dashboard/index.html _site/dashboard/index.html
+          # Custom domain (DNS: pronos.fantasy-coach.fr CNAME lionelleboiteux.github.io).
+          # Must be re-written on every deploy — GitHub Pages drops the custom
+          # domain if a deploy ever lands without this file.
+          echo "pronos.fantasy-coach.fr" > _site/CNAME
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
