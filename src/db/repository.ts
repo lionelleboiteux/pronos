@@ -23,6 +23,18 @@ export type QueryExecutor = {
 
 export type StandingsQuery = { page: number; per_page: number };
 
+export type GameweekPicks = {
+  league_name: string;
+  gameweek_number: number;
+  picks: Array<{
+    home_team: string;
+    away_team: string;
+    predicted_home_score: number;
+    predicted_away_score: number;
+    starts_at: Date;
+  }>;
+};
+
 /** Postgres takes a bigint offset; a page number past this returns nothing. */
 const offsetOf = (q: StandingsQuery): number =>
   Math.min((q.page - 1) * q.per_page, 2 ** 31);
@@ -446,6 +458,43 @@ export function createRepository(pool: QueryExecutor) {
         after,
       ]);
       return { applied: true, current_gameweek_id_before: before, current_gameweek_id_after: after };
+    },
+
+    /** Everything one pseudo picked in one gameweek — the consolidated email receipt's data source. */
+    async getPlayerGameweekPicks(
+      league_id: string,
+      gameweek_id: string,
+      pseudo: string,
+    ): Promise<GameweekPicks | null> {
+      const gw = await pool.query(
+        `select gw.number, l.name as league_name
+           from gameweeks gw join leagues l on l.id = gw.league_id
+          where gw.id = $1 and gw.league_id = $2`,
+        [gameweek_id, league_id],
+      );
+      const gameweek = gw.rows[0];
+      if (!gameweek) return null;
+
+      const picks = await pool.query(
+        `select h.name as home_team, a.name as away_team,
+                pr.pred_home_team_score as predicted_home_score,
+                pr.pred_away_team_score as predicted_away_score,
+                g.starts_at
+           from predictions pr
+           join players p on p.id = pr.player_id
+           join games g on g.id = pr.game_id
+           join teams h on h.id = g.home_team_id
+           join teams a on a.id = g.away_team_id
+          where pr.gameweek_id = $1 and p.pseudo = $2
+          order by g.starts_at`,
+        [gameweek_id, pseudo],
+      );
+
+      return {
+        league_name: gameweek.league_name,
+        gameweek_number: gameweek.number,
+        picks: picks.rows as GameweekPicks['picks'],
+      };
     },
   };
 }

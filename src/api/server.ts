@@ -81,6 +81,9 @@ export async function createApiServer(opts: ServerOptions): Promise<RunningServe
     rateLimiter: createRateLimiter({ max_requests: SUBMIT_RATE_LIMIT_PER_MINUTE, window_ms: 60_000 }),
     emailKeys: new Set(),
     adminResponses: new Map(),
+    // No real mailer in Node — this entrypoint only ever runs under tests
+    // and Schemathesis, which don't need a real inbox at the other end.
+    mailer: { sendReceipt: async () => true },
   };
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {

@@ -19,6 +19,7 @@ import { errorResponse, type ApiResponse } from './errors.ts';
 import { handleGetCurrentGameweek } from './getCurrentGameweek.ts';
 import { handleGameweekOverride } from './adminOverride.ts';
 import { handleSubmitPrediction, type SubmitRequest } from './submitPrediction.ts';
+import { handleSendGameweekReceipt } from './sendGameweekReceipt.ts';
 import { SUBMIT_RATE_LIMIT_PER_MINUTE, type RateLimiter } from './rateLimit.ts';
 
 /** An ApiResponse plus any header the HTTP layer itself owes (e.g. Allow). */
@@ -31,6 +32,12 @@ export type Ctx = {
   /** Idempotency-Key replay stores, in-memory for a single function instance. */
   emailKeys: Set<string>;
   adminResponses: Map<string, ApiResponse>;
+  /**
+   * Only used by the consolidated gameweek-receipt route below —
+   * submitPrediction's own per-match mailer dependency is separate and
+   * intentionally still a no-op (see the /v1/predictions handler).
+   */
+  mailer: { sendReceipt(to: string, subject: string, text: string): Promise<boolean> };
 };
 
 /**
@@ -140,6 +147,12 @@ const ROUTES: Route[] = [
             now: () => new Date(),
             repo: ctx.repo,
             telemetry: sink,
+            // Deliberately still a no-op, not ctx.mailer: this fires once
+            // per match (10 calls for a 10-match gameweek), and a player
+            // wants one consolidated email, not ten. The frontend no longer
+            // sends `email` on these per-match calls at all — real sending
+            // happens once, from the /receipt route below, after all of a
+            // gameweek's matches are submitted. See sendGameweekReceipt.ts.
             mailer: { sendReceipt: async () => true },
             rateLimiter: isAdmin(req, ctx) ? ALWAYS_ALLOW : ctx.rateLimiter,
             idempotency: {
@@ -270,6 +283,26 @@ const ROUTES: Route[] = [
         );
         await ctx.repo.insertTelemetryEvents(sink.events);
         return response;
+      },
+    },
+  },
+  {
+    pattern: /^\/v1\/leagues\/([^/]+)\/gameweeks\/([^/]+)\/receipt$/,
+    query: [],
+    handlers: {
+      POST: async (req, ctx) => {
+        const ids = z.tuple([Uuid, Uuid]).safeParse(req.params);
+        if (!ids.success) return NOT_FOUND();
+        const body = (req.body ?? {}) as { pseudo?: unknown; email?: unknown };
+        return handleSendGameweekReceipt(
+          {
+            league_id: ids.data[0],
+            gameweek_id: ids.data[1],
+            pseudo: body.pseudo as string,
+            email: body.email as string,
+          },
+          { repo: ctx.repo, mailer: ctx.mailer },
+        );
       },
     },
   },

@@ -212,11 +212,16 @@
     app.appendChild(el('p', { text: message }));
   }
 
-  function renderThankYou(league, leagues) {
+  function renderThankYou(league, leagues, emailSent) {
     app.innerHTML = '';
     app.appendChild(el('h1', { text: 'Merci !' }));
     var intro = el('div', { class: 'intro' });
     intro.appendChild(el('p', { text: 'Vos pronostics pour ' + league.name + ' sont enregistrés. Bonne chance !' }));
+    if (emailSent === true) {
+      intro.appendChild(el('p', { class: 'reminder', text: 'Un email de confirmation vous a été envoyé.' }));
+    } else if (emailSent === false) {
+      intro.appendChild(el('p', { class: 'reminder', text: 'Vos pronostics sont bien enregistrés, mais l’email de confirmation n’a pas pu être envoyé.' }));
+    }
     app.appendChild(intro);
 
     var others = leagues.filter(function (l) { return l.id !== league.id; });
@@ -356,7 +361,9 @@
           predicted_home_score: parseInt(row.homeInput.value, 10),
           predicted_away_score: parseInt(row.awayInput.value, 10),
         };
-        if (email) payload.email = email;
+        // Not `email` here — that would fire one receipt per match. One
+        // consolidated email is sent once below, after every match in
+        // this submission has gone through.
 
         return apiFetch('/v1/predictions', {
           method: 'POST',
@@ -383,13 +390,32 @@
       });
 
       Promise.all(results).then(function (outcomes) {
-        submitBtn.disabled = false;
         var okCount = outcomes.filter(Boolean).length;
         if (okCount > 0) rememberPseudo(pseudo);
+
         if (okCount === outcomes.length) {
-          renderThankYou(league, leagues);
+          if (!email) {
+            submitBtn.disabled = false;
+            renderThankYou(league, leagues, null);
+            return;
+          }
+          globalMessage.textContent = 'Envoi du récapitulatif par email…';
+          apiFetch('/v1/leagues/' + league.id + '/gameweeks/' + gameweek.id + '/receipt', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ pseudo: pseudo, email: email }),
+          }).then(function (res) {
+            submitBtn.disabled = false;
+            renderThankYou(league, leagues, res.status === 200 && res.body.email_sent);
+          }).catch(function () {
+            submitBtn.disabled = false;
+            renderThankYou(league, leagues, false);
+          });
           return;
-        } else if (okCount > 0) {
+        }
+
+        submitBtn.disabled = false;
+        if (okCount > 0) {
           globalMessage.className = 'error';
           globalMessage.textContent = okCount + ' sur ' + outcomes.length + ' pronostics enregistrés — voir les erreurs ci-dessus.';
         } else {

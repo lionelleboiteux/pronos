@@ -8,6 +8,7 @@
  * client that satisfies `QueryExecutor`.
  */
 import { Pool } from 'postgres';
+import { SMTPClient } from 'denomailer';
 import { createRepository, type QueryExecutor } from '../../../src/db/repository.ts';
 import { errorResponse } from '../../../src/api/errors.ts';
 import { handleRequest, type Ctx, type Request as ApiRequest } from '../../../src/api/router.ts';
@@ -17,6 +18,48 @@ const databaseUrl = Deno.env.get('SUPABASE_DB_URL') ?? Deno.env.get('DATABASE_UR
 if (!databaseUrl) throw new Error('SUPABASE_DB_URL (or DATABASE_URL) must be set.');
 const adminToken = Deno.env.get('ADMIN_TOKEN');
 if (!adminToken) throw new Error('ADMIN_TOKEN must be set.');
+const gmailAppPassword = Deno.env.get('GMAIL_APP_PASSWORD');
+
+const GMAIL_USER = 'fantasycoachfr@gmail.com';
+
+/**
+ * Real Gmail SMTP, not a transactional-email API: the user's explicit
+ * choice, to keep the exact sender identity "Fantasy Coach
+ * <fantasycoachfr@gmail.com>" their old spreadsheet-era system used — a
+ * provider like Resend can't send convincingly as a gmail.com address
+ * without owning that domain. Only used by the consolidated gameweek
+ * receipt (src/api/sendGameweekReceipt.ts), never per-match.
+ */
+const mailer = {
+  async sendReceipt(to: string, subject: string, text: string): Promise<boolean> {
+    if (!gmailAppPassword) {
+      console.error('GMAIL_APP_PASSWORD is not set — cannot send email.');
+      return false;
+    }
+    const client = new SMTPClient({
+      connection: {
+        hostname: 'smtp.gmail.com',
+        port: 465,
+        tls: true,
+        auth: { username: GMAIL_USER, password: gmailAppPassword },
+      },
+    });
+    try {
+      await client.send({
+        from: `Fantasy Coach <${GMAIL_USER}>`,
+        to,
+        subject,
+        content: text,
+      });
+      return true;
+    } catch (err) {
+      console.error('sendReceipt failed', err);
+      return false;
+    } finally {
+      await client.close();
+    }
+  },
+};
 
 // deno-postgres, Supabase's own documented driver for raw SQL from Edge
 // Functions (https://supabase.com/docs/guides/functions/connect-to-postgres)
@@ -42,6 +85,7 @@ const ctx: Ctx = {
   rateLimiter: createRateLimiter({ max_requests: SUBMIT_RATE_LIMIT_PER_MINUTE, window_ms: 60_000 }),
   emailKeys: new Set(),
   adminResponses: new Map(),
+  mailer,
 };
 
 // The frontend (frontend/index.html) and the dashboard are both served
