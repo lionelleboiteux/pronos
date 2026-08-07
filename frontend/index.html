@@ -6,40 +6,60 @@
 <title>Jeu des Pronos</title>
 <style>
   :root {
-    --bg: #f5f5f4;
+    /* fantasy-coach.fr's own blue (sampled from the live site), reused here
+       so this page reads as part of the same site, not a separate app. */
+    --fc-blue: #3d9be9;
+    --fc-blue-light: #63b0ee;
+    --bg: #ffffff;
     --card: #ffffff;
     --ink: #1c1917;
     --muted: #6b6560;
     --border: #d6d3d1;
-    --accent: #2563eb;
+    --accent: var(--fc-blue);
     --accent-ink: #ffffff;
     --locked-bg: #e7e5e4;
     --error: #b91c1c;
     --ok: #15803d;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #1c1917;
-      --card: #292524;
-      --ink: #f5f5f4;
-      --muted: #a8a29e;
-      --border: #44403c;
-      --accent: #60a5fa;
-      --accent-ink: #1c1917;
-      --locked-bg: #1c1917;
-      --error: #f87171;
-      --ok: #4ade80;
-    }
-  }
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    padding: 1rem;
+    padding: 0 1rem 1rem;
     background: var(--bg);
     color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     line-height: 1.5;
   }
+  .site-banner {
+    background: linear-gradient(180deg, var(--fc-blue-light) 0%, var(--fc-blue) 100%);
+    color: #ffffff;
+    margin: 0 -1rem 1.5rem;
+    padding: 1.25rem 1rem 0;
+  }
+  .site-banner-top {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    text-align: center;
+  }
+  .site-logo { width: 56px; height: 56px; border-radius: 50%; }
+  .site-title { display: block; font-size: 1.5rem; font-weight: 800; color: #ffffff; text-decoration: none; }
+  .site-tagline { margin: 0.1rem 0 0; font-size: 0.82rem; opacity: 0.9; }
+  .site-nav {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem 1rem;
+    margin-top: 1rem;
+    padding: 0.6rem 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.3);
+    font-size: 0.85rem;
+  }
+  .site-nav a { color: #ffffff; text-decoration: none; font-weight: 600; }
+  .site-nav a.active { text-decoration: underline; text-underline-offset: 3px; }
+  .site-footer { text-align: center; font-size: 0.8rem; color: var(--muted); margin: 2.5rem 0 1rem; }
   main { max-width: 640px; margin: 0 auto; }
   h1 { font-size: 1.4rem; margin: 0.5rem 0 1rem; }
   .intro { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
@@ -132,10 +152,29 @@
     text-decoration: none;
     font-weight: 600;
   }
-  footer { text-align: center; font-size: 0.75rem; color: var(--muted); margin: 2rem 0 1rem; }
 </style>
 </head>
 <body>
+<header class="site-banner">
+  <div class="site-banner-top">
+    <a href="https://www.fantasy-coach.fr/">
+      <img class="site-logo" src="https://static.wixstatic.com/media/449182_b075115d95e54908bebcaaef43561929~mv2.png/v1/fill/w_174,h_174,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/newlogo.png" alt="logo fantasy coach">
+    </a>
+    <div>
+      <a class="site-title" href="https://www.fantasy-coach.fr/">Fantasy Coach</a>
+      <p class="site-tagline">La référence Fantasy Foot</p>
+    </div>
+  </div>
+  <nav class="site-nav">
+    <a href="https://www.fantasy-coach.fr/ligue1">Ligue 1</a>
+    <a href="https://www.fantasy-coach.fr/fantasy-l1">Fantasy L1</a>
+    <a href="https://www.fantasy-coach.fr/sorare">Sorare</a>
+    <a href="https://www.fantasy-coach.fr/fpl">FPL</a>
+    <a href="https://www.fantasy-coach.fr/bundesliga">Bundesliga</a>
+    <a href="https://www.fantasy-coach.fr/pronos" class="active">Pronos</a>
+  </nav>
+</header>
+
 <main id="app">
   <p>Chargement…</p>
 </main>
@@ -464,6 +503,6 @@
 })();
 </script>
 
-<footer>jeu-des-pronos</footer>
+<footer class="site-footer">&copy;2026 by Fantasy Coach.</footer>
 </body>
 </html>
