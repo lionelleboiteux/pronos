@@ -4,12 +4,22 @@
  * surface between the handlers and Postgres.
  */
 
-import pg from 'pg';
 import { runScoring, type ScoringRunPlayer } from '../domain/scoringRun.ts';
 import type { OverrideAction } from '../api/adminOverride.ts';
 import type { GameRecord } from '../api/submitPrediction.ts';
 import type { LeagueCurrentState } from '../api/getCurrentGameweek.ts';
 import type { TelemetryEvent } from '../telemetry/events.ts';
+
+/**
+ * The only shape this module needs from a Postgres client. node-postgres's
+ * `pg.Pool` satisfies this structurally (no import needed here), and so does
+ * the postgres.js adapter the Deno/Edge Function entrypoint builds — this
+ * keeps the module runnable under both Node (tests, Testcontainers) and Deno
+ * without depending on either client package directly.
+ */
+export type QueryExecutor = {
+  query(text: string, params?: unknown[]): Promise<{ rows: any[] }>;
+};
 
 export type StandingsQuery = { page: number; per_page: number };
 
@@ -92,7 +102,7 @@ const toFlag = (row: FlagQueryRow): DuplicateFlagRow => ({
   created_at: row.created_at.toISOString(),
 });
 
-export function createRepository(pool: pg.Pool) {
+export function createRepository(pool: QueryExecutor) {
   async function rescore(gameweek_id: string): Promise<void> {
     const gw = await pool.query(
       `select gw.league_id, gw.season_id, coalesce(max(g.starts_at), gw.starts_at) as last_kickoff_at
