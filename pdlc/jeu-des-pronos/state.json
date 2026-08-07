@@ -210,12 +210,12 @@
       "notes": null
     },
     "release": {
-      "status": "pending",
+      "status": "approved",
       "artifacts": [],
-      "actor": null,
-      "model": null,
-      "at": null,
-      "notes": null
+      "actor": "lionel.leboiteux@gmail.com",
+      "model": "human",
+      "at": "2026-08-07T12:49:39Z",
+      "notes": "Approved as presented (v1.0.2, no conditions or canary window specified)."
     },
     "review": {
       "status": "pending",
@@ -364,6 +364,13 @@
         "pdlc/jeu-des-pronos/11-dashboard.v1.md",
         "dashboard/index.html"
       ]
+    },
+    {
+      "at": "2026-08-07T12:49:39Z",
+      "event": "sign",
+      "decision": "approved",
+      "actor": "lionel.leboiteux@gmail.com",
+      "note": "Approved as presented (v1.0.2, no conditions or canary window specified)."
     }
   ]
 }
