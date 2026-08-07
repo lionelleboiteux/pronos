@@ -58,7 +58,7 @@
   }
   .match {
     display: grid;
-    grid-template-columns: 1fr auto auto auto auto 1fr;
+    grid-template-columns: 1fr auto auto auto auto auto 1fr;
     align-items: center;
     gap: 0.5rem;
     background: var(--card);
@@ -212,6 +212,24 @@
     app.appendChild(el('p', { text: message }));
   }
 
+  function renderThankYou(league, leagues) {
+    app.innerHTML = '';
+    app.appendChild(el('h1', { text: 'Merci !' }));
+    var intro = el('div', { class: 'intro' });
+    intro.appendChild(el('p', { text: 'Vos pronostics pour ' + league.name + ' sont enregistrés. Bonne chance !' }));
+    app.appendChild(intro);
+
+    var others = leagues.filter(function (l) { return l.id !== league.id; });
+    if (others.length > 0) {
+      app.appendChild(el('p', { text: 'Envie de pronostiquer un autre championnat ?' }));
+      var picker = el('div', { class: 'picker' });
+      others.forEach(function (l) {
+        picker.appendChild(el('a', { href: '?league=' + encodeURIComponent(l.code), text: l.name }));
+      });
+      app.appendChild(picker);
+    }
+  }
+
   function earliestUnlockedKickoff(games) {
     var upcoming = games.filter(function (g) { return !g.is_locked; }).map(function (g) { return g.game.starts_at; });
     if (upcoming.length === 0) return null;
@@ -219,7 +237,7 @@
     return upcoming[0];
   }
 
-  function render(league, gameweek, games) {
+  function render(league, gameweek, games, leagues) {
     app.innerHTML = '';
     app.appendChild(el('h1', { text: 'Pronostics — ' + league.name }));
 
@@ -369,8 +387,8 @@
         var okCount = outcomes.filter(Boolean).length;
         if (okCount > 0) rememberPseudo(pseudo);
         if (okCount === outcomes.length) {
-          globalMessage.className = 'ok';
-          globalMessage.textContent = 'Tous vos pronostics ont été enregistrés.';
+          renderThankYou(league, leagues);
+          return;
         } else if (okCount > 0) {
           globalMessage.className = 'error';
           globalMessage.textContent = okCount + ' sur ' + outcomes.length + ' pronostics enregistrés — voir les erreurs ci-dessus.';
@@ -409,7 +427,7 @@
       var q = pseudo ? ('?pseudo=' + encodeURIComponent(pseudo)) : '';
       apiFetch('/v1/leagues/' + league.id + '/current' + q, {}).then(function (res2) {
         if (res2.status !== 200) throw new Error('current gameweek fetch failed');
-        render(res2.body.league, res2.body.gameweek, res2.body.games || []);
+        render(res2.body.league, res2.body.gameweek, res2.body.games || [], leagues);
       });
     }).catch(function () {
       renderError('Impossible de charger la page pour le moment. Réessayez dans un instant.');
