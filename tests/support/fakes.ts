@@ -11,6 +11,8 @@
 import type {
   AdminOverrideDeps,
   GameRecord,
+  GameweekPicks,
+  SendReceiptDeps,
   StoredPrediction,
   SubmitDeps,
   TelemetryEvent,
@@ -160,6 +162,32 @@ export function buildAdminOverrideDeps(opts: {
       return state.appliedCalls;
     },
   } as BuiltAdminDeps;
+}
+
+export type BuiltReceiptDeps = {
+  deps: SendReceiptDeps;
+  sentEmails: Array<{ to: string; subject: string; text: string }>;
+};
+
+export function buildReceiptDeps(
+  picks: GameweekPicks | null,
+  o: { mailerResult?: boolean } = {},
+): BuiltReceiptDeps {
+  const sentEmails: Array<{ to: string; subject: string; text: string }> = [];
+
+  const deps: SendReceiptDeps = {
+    repo: {
+      getPlayerGameweekPicks: async () => picks,
+    },
+    mailer: {
+      sendReceipt: async (to: string, subject: string, text: string) => {
+        sentEmails.push({ to, subject, text });
+        return o.mailerResult ?? true;
+      },
+    },
+  };
+
+  return { deps, sentEmails };
 }
 
 export function storedPrediction(

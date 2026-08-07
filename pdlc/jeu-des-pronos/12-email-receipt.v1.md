@@ -48,8 +48,14 @@ Password, stored as a Supabase Edge Function secret, never committed.
   account the credentials belong to — a self-contained test, not a third
   party). Response: `{"email_sent":true}`. Function logs for that request
   window show no errors.
-- 118/118 existing tests still pass; `tsc --noEmit` clean on both the
-  Node and Deno sides.
+- **Full browser end-to-end, on the real production domain**
+  (`pronos.fantasy-coach.fr`): submitted a full Serie A gameweek through
+  the actual UI with a real email address, watched all 10 per-match POSTs
+  succeed, the consolidated-receipt call fire, and the "Merci !" page
+  render "Un email de confirmation vous a été envoyé." — the true text the
+  frontend shows only when the API reports `email_sent: true`.
+- 118/118 existing tests still pass at deploy time; `tsc --noEmit` clean
+  on both the Node and Deno sides. (Now 130/130 — see below.)
 
 ## Real bug found while building this, not after
 
@@ -63,12 +69,31 @@ that was already running when the file appeared, even though it hot-reloads
 without issue). Worth remembering for the next new file added to a
 function while the local stack is already running.
 
+## Tests added (2026-08-07, same day, on request)
+
+12 tests added after the fact, not as a full red-gate cycle (still no
+`openapi.yaml` entry — see below) but real coverage, matching the
+project's existing patterns exactly rather than inventing new ones:
+
+- `tests/unit/sendGameweekReceipt.test.ts` (8 tests, fakes): the exact
+  subject/body format (locked down so a future refactor can't silently
+  drift from the example the user gave), one email per gameweek not per
+  match, `email_sent: false` on mailer failure without erroring, 404 on
+  no picks / wrong league-gameweek pair, 400 on a malformed email or
+  blank pseudo.
+- `tests/db/gameweekPicks.test.ts` (4 tests, real Postgres via
+  Testcontainers — nothing about the database is mocked in this suite,
+  matching `tests/db/schema.test.ts`'s own rule): the join actually
+  returns the right matches for the right pseudo, never another player's
+  picks, `null` when the gameweek doesn't belong to the given league,
+  and an empty (not `null`) `picks` array when the pseudo never
+  predicted in an otherwise-real gameweek — the exact distinction the
+  handler depends on for its 404.
+
+130/130 total, `tsc --noEmit` clean.
+
 ## Known gaps
 
-- No automated test exists for `sendGameweekReceipt.ts` (no red-gate cycle
-  was run for this addition — a deliberate, pragmatic trade-off for a
-  small post-release fix, not an oversight to silently carry forward
-  indefinitely).
 - `openapi.yaml` was not updated with this new operation, so it isn't
   contract-fuzzed by Schemathesis and isn't documented in the frozen
   contract. Worth doing if this surface grows.

@@ -26,6 +26,9 @@
  *   src/domain/leagueConfig.ts        leagues.config loading (AC-13)
  *   src/telemetry/events.ts           telemetry event construction + sink
  *   src/api/submitPrediction.ts       POST /v1/predictions handler
+ *   src/api/sendGameweekReceipt.ts    POST .../receipt handler (consolidated
+ *                                      gameweek email — added post-release,
+ *                                      see pdlc/jeu-des-pronos/12-email-receipt.v1.md)
  *   src/api/getCurrentGameweek.ts     GET /v1/leagues/{id}/current handler
  *   src/api/adminOverride.ts          POST /v1/admin/gameweeks/{id}/override handler
  *   src/api/rateLimit.ts              submit-endpoint rate limiter
@@ -492,6 +495,48 @@ export interface AdminOverrideModule {
 export async function loadAdminOverride(): Promise<AdminOverrideModule> {
   // @ts-ignore -- production module does not exist yet (red gate)
   return (await import('../../src/api/adminOverride')) as unknown as AdminOverrideModule;
+}
+
+// ---------------------------------------------------------------------------
+// src/api/sendGameweekReceipt.ts
+// ---------------------------------------------------------------------------
+
+export type GameweekPicks = {
+  league_name: string;
+  gameweek_number: number;
+  picks: Array<{
+    home_team: string;
+    away_team: string;
+    predicted_home_score: number;
+    predicted_away_score: number;
+    starts_at: Date;
+  }>;
+};
+
+export type SendReceiptRequest = {
+  league_id: string;
+  gameweek_id: string;
+  pseudo: string;
+  email: string;
+};
+
+export type SendReceiptDeps = {
+  repo: {
+    getPlayerGameweekPicks(league_id: string, gameweek_id: string, pseudo: string): Promise<GameweekPicks | null>;
+  };
+  mailer: { sendReceipt(to: string, subject: string, text: string): Promise<boolean> };
+};
+
+export interface SendGameweekReceiptModule {
+  handleSendGameweekReceipt(
+    req: SendReceiptRequest,
+    deps: SendReceiptDeps,
+  ): Promise<{ status: number; body: Record<string, unknown> }>;
+  buildReceiptEmail(pseudo: string, data: GameweekPicks): { subject: string; text: string };
+}
+
+export async function loadSendGameweekReceipt(): Promise<SendGameweekReceiptModule> {
+  return (await import('../../src/api/sendGameweekReceipt')) as unknown as SendGameweekReceiptModule;
 }
 
 // ---------------------------------------------------------------------------
