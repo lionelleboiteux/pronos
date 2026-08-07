@@ -28,7 +28,11 @@ export type GameweekPicks = {
   gameweek_number: number;
   picks: Array<{
     home_team: string;
+    home_team_code: string;
+    home_team_logo_url: string | null;
     away_team: string;
+    away_team_code: string;
+    away_team_logo_url: string | null;
     predicted_home_score: number;
     predicted_away_score: number;
     starts_at: Date;
@@ -476,7 +480,8 @@ export function createRepository(pool: QueryExecutor) {
       if (!gameweek) return null;
 
       const picks = await pool.query(
-        `select h.name as home_team, a.name as away_team,
+        `select h.name as home_team, h.code as home_team_code, h.logo_url as home_team_logo_url,
+                a.name as away_team, a.code as away_team_code, a.logo_url as away_team_logo_url,
                 pr.pred_home_team_score as predicted_home_score,
                 pr.pred_away_team_score as predicted_away_score,
                 g.starts_at

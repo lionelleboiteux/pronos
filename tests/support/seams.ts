@@ -506,7 +506,11 @@ export type GameweekPicks = {
   gameweek_number: number;
   picks: Array<{
     home_team: string;
+    home_team_code: string;
+    home_team_logo_url: string | null;
     away_team: string;
+    away_team_code: string;
+    away_team_logo_url: string | null;
     predicted_home_score: number;
     predicted_away_score: number;
     starts_at: Date;

@@ -27,14 +27,25 @@ const TWO_MATCH_GAMEWEEK: GameweekPicks = {
   picks: [
     {
       home_team: 'Olympique de Marseille',
+      home_team_code: 'OM',
+      // Real logo_url on purpose: exercises the <img> path, not just the
+      // fallback — every seeded team happens to have none today, but the
+      // handler must not assume that stays true.
+      home_team_logo_url: 'https://cdn.pronos.example/teams/om.png',
       away_team: 'Paris Saint-Germain',
+      away_team_code: 'PSG',
+      away_team_logo_url: null,
       predicted_home_score: 2,
       predicted_away_score: 1,
       starts_at: new Date('2026-08-10T19:00:00Z'),
     },
     {
       home_team: 'AS Monaco',
+      home_team_code: 'ASM',
+      home_team_logo_url: null,
       away_team: 'LOSC Lille',
+      away_team_code: 'LOSC',
+      away_team_logo_url: null,
       predicted_home_score: 0,
       predicted_away_score: 0,
       starts_at: new Date('2026-08-11T18:00:00Z'),
@@ -59,8 +70,8 @@ describe('buildReceiptEmail', () => {
       league_name: 'Ligue 1',
       gameweek_number: 15,
       picks: [
-        { home_team: 'AS Monaco', away_team: 'Paris Saint-Germain', predicted_home_score: 2, predicted_away_score: 1, starts_at: new Date() },
-        { home_team: 'FC Nantes', away_team: 'LOSC Lille', predicted_home_score: 0, predicted_away_score: 0, starts_at: new Date() },
+        { home_team: 'AS Monaco', home_team_code: 'ASM', home_team_logo_url: null, away_team: 'Paris Saint-Germain', away_team_code: 'PSG', away_team_logo_url: null, predicted_home_score: 2, predicted_away_score: 1, starts_at: new Date() },
+        { home_team: 'FC Nantes', home_team_code: 'FCN', home_team_logo_url: null, away_team: 'LOSC Lille', away_team_code: 'LOSC', away_team_logo_url: null, predicted_home_score: 0, predicted_away_score: 0, starts_at: new Date() },
       ],
     };
 
@@ -110,7 +121,7 @@ describe('buildReceiptEmail', () => {
       league_name: 'Ligue 1',
       gameweek_number: 15,
       picks: [
-        { home_team: '<b>Home</b>', away_team: 'Away', predicted_home_score: 1, predicted_away_score: 0, starts_at: new Date() },
+        { home_team: '<b>Home</b>', home_team_code: 'HOM', home_team_logo_url: null, away_team: 'Away', away_team_code: 'AWY', away_team_logo_url: null, predicted_home_score: 1, predicted_away_score: 0, starts_at: new Date() },
       ],
     };
 
@@ -119,6 +130,44 @@ describe('buildReceiptEmail', () => {
     expect(html).not.toContain('<script>x</script>');
     expect(html).not.toContain('<b>Home</b>');
     expect(html).toContain('&lt;b&gt;Home&lt;/b&gt;');
+  });
+
+  it('renders a real crest <img> when a team has a logo_url, and the initials fallback when it does not', async () => {
+    const api = await loadSendGameweekReceipt();
+
+    const { html } = api.buildReceiptEmail('Lio_92', TWO_MATCH_GAMEWEEK);
+
+    // Olympique de Marseille (code OM) has a logo_url in this fixture.
+    expect(html).toContain('<img src="https://cdn.pronos.example/teams/om.png"');
+    // Paris Saint-Germain (code PSG) does not, in the same fixture — falls
+    // back to the same initials badge the webpage itself uses.
+    expect(html).toContain('>PSG</span>');
+  });
+
+  it('escapes a logo_url that could otherwise break out of the src attribute', async () => {
+    const api = await loadSendGameweekReceipt();
+    const withHostileUrl: typeof TWO_MATCH_GAMEWEEK = {
+      league_name: 'Ligue 1',
+      gameweek_number: 15,
+      picks: [
+        {
+          home_team: 'Home',
+          home_team_code: 'HOM',
+          home_team_logo_url: 'https://x.example/a.png" onerror="alert(1)',
+          away_team: 'Away',
+          away_team_code: 'AWY',
+          away_team_logo_url: null,
+          predicted_home_score: 1,
+          predicted_away_score: 0,
+          starts_at: new Date(),
+        },
+      ],
+    };
+
+    const { html } = api.buildReceiptEmail('Lio_92', withHostileUrl);
+
+    expect(html).not.toContain('onerror="alert(1)"');
+    expect(html).toContain('&quot;');
   });
 });
 

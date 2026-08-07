@@ -35,7 +35,25 @@ const Body = z.object({
 });
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Same fallback the webpage already uses (frontend/index.html's
+ * teamCrest()) for a team with no logo_url set — which, as of this
+ * writing, is every team: nothing has been given a real crest URL yet.
+ * Kept identical so "add the logos" degrades the same honest way here as
+ * it already does on the page, rather than a different-looking gap.
+ */
+function crestHtml(name: string, code: string, logoUrl: string | null): string {
+  if (logoUrl) {
+    return `<img src="${escapeHtml(logoUrl)}" width="24" height="24" alt="${escapeHtml(name)}" style="display:block; border-radius:50%; object-fit:contain;">`;
+  }
+  const initials = escapeHtml((code || name || '?').slice(0, 3).toUpperCase());
+  return (
+    `<span style="display:inline-block; width:24px; height:24px; line-height:24px; border-radius:50%; ` +
+    `background:#e7e5e4; color:#1c1917; font-size:9px; font-weight:700; text-align:center;">${initials}</span>`
+  );
 }
 
 export function buildReceiptEmail(pseudo: string, data: GameweekPicks): { subject: string; text: string; html: string } {
@@ -58,11 +76,13 @@ export function buildReceiptEmail(pseudo: string, data: GameweekPicks): { subjec
     .map(
       (p) => `
       <tr>
-        <td style="text-align:right; padding:4px 8px; white-space:nowrap;">${escapeHtml(p.home_team)}</td>
+        <td style="text-align:right; padding:4px 6px; white-space:nowrap;">${escapeHtml(p.home_team)}</td>
+        <td style="padding:0 2px;">${crestHtml(p.home_team, p.home_team_code, p.home_team_logo_url)}</td>
         <td style="text-align:right; padding:4px 2px; font-weight:bold;">${p.predicted_home_score}</td>
         <td style="text-align:center; padding:4px 2px; color:#6b6560;">-</td>
         <td style="text-align:left; padding:4px 2px; font-weight:bold;">${p.predicted_away_score}</td>
-        <td style="text-align:left; padding:4px 8px; white-space:nowrap;">${escapeHtml(p.away_team)}</td>
+        <td style="padding:0 2px;">${crestHtml(p.away_team, p.away_team_code, p.away_team_logo_url)}</td>
+        <td style="text-align:left; padding:4px 6px; white-space:nowrap;">${escapeHtml(p.away_team)}</td>
       </tr>`,
     )
     .join('');

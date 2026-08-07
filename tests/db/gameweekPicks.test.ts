@@ -47,7 +47,11 @@ describe('getPlayerGameweekPicks', () => {
       picks: [
         {
           home_team: 'gwp-1 Home FC',
+          home_team_code: 'gwp-1-H',
+          home_team_logo_url: null,
           away_team: 'gwp-1 Away FC',
+          away_team_code: 'gwp-1-A',
+          away_team_logo_url: null,
           predicted_home_score: 2,
           predicted_away_score: 1,
           starts_at: expect.any(Date),

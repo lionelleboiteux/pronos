@@ -9,6 +9,7 @@
  */
 import { Pool } from 'postgres';
 import { SMTPClient } from 'denomailer';
+import { encodeBase64 } from '@std/encoding/base64';
 import { createRepository, type QueryExecutor } from '../../../src/db/repository.ts';
 import { errorResponse } from '../../../src/api/errors.ts';
 import { handleRequest, type Ctx, type Request as ApiRequest } from '../../../src/api/router.ts';
@@ -21,6 +22,21 @@ if (!adminToken) throw new Error('ADMIN_TOKEN must be set.');
 const gmailAppPassword = Deno.env.get('GMAIL_APP_PASSWORD');
 
 const GMAIL_USER = 'fantasycoachfr@gmail.com';
+
+/**
+ * denomailer's default text/html encoding is quoted-printable
+ * (config/mail/content.ts), but it leaves raw "=20"/soft-line-break
+ * artifacts visible in Gmail instead of being decoded away — confirmed
+ * against real received emails, not assumed. Base64 has no such
+ * whitespace/line-boundary edge cases, so this builds the MIME parts
+ * ourselves (denomailer's `mimeContent` escape hatch) instead of handing
+ * it raw text/html to encode. Line-wrapped at 76 chars per RFC 2045.
+ */
+function toBase64MimePart(mimeType: string, body: string) {
+  const b64 = encodeBase64(new TextEncoder().encode(body));
+  const wrapped = b64.match(/.{1,76}/g)?.join('\r\n') ?? b64;
+  return { mimeType: `${mimeType}; charset="utf-8"`, content: wrapped, transferEncoding: 'base64' };
+}
 
 /**
  * Real Gmail SMTP, not a transactional-email API: the user's explicit
@@ -49,8 +65,7 @@ const mailer = {
         from: `Fantasy Coach <${GMAIL_USER}>`,
         to,
         subject,
-        content: text,
-        html,
+        mimeContent: [toBase64MimePart('text/plain', text), toBase64MimePart('text/html', html)],
       });
       return true;
     } catch (err) {
