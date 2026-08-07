@@ -44,6 +44,17 @@ const ctx: Ctx = {
   adminResponses: new Map(),
 };
 
+// The frontend (frontend/index.html) and the dashboard are both served
+// from a different origin (GitHub Pages) than this function — a browser
+// fetch silently fails without CORS headers even though curl (no origin
+// enforcement) can't catch that; see 11-dashboard.v1.md §5 for how this
+// was found the first time. Public, no cookies/credentials involved.
+const CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS',
+  'access-control-allow-headers': 'content-type, authorization, idempotency-key',
+};
+
 function toHeaderRecord(headers: Headers): ApiRequest['headers'] {
   const out: Record<string, string> = {};
   for (const [key, value] of headers.entries()) out[key] = value;
@@ -84,6 +95,8 @@ async function readBody(req: globalThis.Request): Promise<{ ok: true; body: unkn
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });
+
   const url = new URL(req.url);
   // The path prefix this function is invoked under varies by how it's
   // reached: bare (local `deno run`), `/api/...` (via Kong, the function
@@ -122,6 +135,7 @@ Deno.serve(async (req) => {
       // code actually answered this request, not just "the deploy command
       // exited 0". Supabase injects DENO_DEPLOYMENT_ID per function version.
       'x-deployment-id': Deno.env.get('DENO_DEPLOYMENT_ID') ?? 'unknown',
+      ...CORS_HEADERS,
       ...(('headers' in result ? result.headers : undefined) ?? {}),
     },
   });

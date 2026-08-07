@@ -1,17 +1,20 @@
-name: Deploy dashboard to Pages
+name: Deploy site to Pages
 
-# Hosts dashboard/index.html (John's benefit dashboard) as a real static
-# HTML page. Supabase can't do this: Edge Functions rewrite any text/html
-# response to text/plain, and public Storage objects get the same downgrade
-# — both confirmed while building this, see 11-dashboard.v1.md. GitHub
-# Pages needs "Deploy from a branch" to point at repo root or /docs only,
-# neither of which fits, so this uses the Actions-based Pages deployment
-# instead, pointed straight at dashboard/.
+# Hosts two static pages: the player prediction form (frontend/index.html)
+# at the site root, and John's benefit dashboard (dashboard/index.html)
+# under /dashboard/. Supabase can't serve either: Edge Functions rewrite
+# any text/html response to text/plain, and public Storage objects get the
+# same downgrade — both confirmed while building the dashboard, see
+# 11-dashboard.v1.md. GitHub Pages' "deploy from a branch" only accepts
+# repo root or /docs as the source path, and neither fits two independent
+# pages at different paths, so this assembles both into one directory and
+# uses the Actions-based Pages deployment instead.
 
 on:
   push:
     branches: [main]
     paths:
+      - 'frontend/index.html'
       - 'dashboard/index.html'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
@@ -32,9 +35,14 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Assemble site
+        run: |
+          mkdir -p _site/dashboard
+          cp frontend/index.html _site/index.html
+          cp dashboard/index.html _site/dashboard/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dashboard
+          path: _site
       - uses: actions/configure-pages@v5
       - id: deployment
         uses: actions/deploy-pages@v4

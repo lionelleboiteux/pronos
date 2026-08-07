@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jeu des Pronos</title>
+<style>
+  :root {
+    --bg: #f5f5f4;
+    --card: #ffffff;
+    --ink: #1c1917;
+    --muted: #6b6560;
+    --border: #d6d3d1;
+    --accent: #2563eb;
+    --accent-ink: #ffffff;
+    --locked-bg: #e7e5e4;
+    --error: #b91c1c;
+    --ok: #15803d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1917;
+      --card: #292524;
+      --ink: #f5f5f4;
+      --muted: #a8a29e;
+      --border: #44403c;
+      --accent: #60a5fa;
+      --accent-ink: #1c1917;
+      --locked-bg: #1c1917;
+      --error: #f87171;
+      --ok: #4ade80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 1rem;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+  }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0.5rem 0 1rem; }
+  .intro { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+  .intro p { margin: 0.5rem 0; }
+  .intro .reminder { font-size: 0.85rem; color: var(--muted); }
+  label { display: block; font-weight: 600; margin: 0.75rem 0 0.25rem; }
+  .field-hint { font-size: 0.8rem; color: var(--muted); font-weight: 400; margin: 0.15rem 0 0; }
+  input[type=text], input[type=email] {
+    width: 100%;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+    color: var(--ink);
+    font-size: 1rem;
+  }
+  .match {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto auto 1fr;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.6rem 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  .match.locked { background: var(--locked-bg); opacity: 0.75; }
+  .match .home-name { text-align: right; font-size: 0.92rem; }
+  .match .away-name { text-align: left; font-size: 0.92rem; }
+  .match img.crest { width: 28px; height: 28px; object-fit: contain; }
+  .match .crest-fallback {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--border); color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem; font-weight: 700;
+  }
+  .match input[type=number] {
+    width: 3rem;
+    padding: 0.4rem 0.3rem;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 1rem;
+  }
+  .match input[type=number]:disabled { opacity: 0.6; }
+  .match .dash { text-align: center; color: var(--muted); }
+  .match-meta {
+    grid-column: 1 / -1;
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 0.15rem;
+  }
+  .match-status {
+    grid-column: 1 / -1;
+    font-size: 0.78rem;
+    text-align: center;
+    margin-top: 0.2rem;
+  }
+  .match-status.ok { color: var(--ok); }
+  .match-status.error { color: var(--error); }
+  button#submit {
+    display: block;
+    width: 100%;
+    margin: 1.25rem 0;
+    padding: 0.75rem;
+    background: var(--accent);
+    color: var(--accent-ink);
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button#submit:disabled { opacity: 0.6; cursor: default; }
+  #global-message { font-size: 0.9rem; margin-bottom: 1rem; }
+  #global-message.error { color: var(--error); }
+  #global-message.ok { color: var(--ok); }
+  .picker a {
+    display: block;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    margin-bottom: 0.6rem;
+    color: var(--ink);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  footer { text-align: center; font-size: 0.75rem; color: var(--muted); margin: 2rem 0 1rem; }
+</style>
+</head>
+<body>
+<main id="app">
+  <p>Chargement…</p>
+</main>
+
+<script>
+(function () {
+  // ?api=<url> overrides the default for local/dev testing only; never
+  // persisted, so production use is unaffected.
+  var API_BASE = new URLSearchParams(location.search).get('api') || 'https://dmytkubjxwwwkroutvdu.supabase.co/functions/v1/api';
+  var PSEUDO_KEY = 'pronos.pseudo'; // same key/semantics as src/client/pseudoMemory.ts
+
+  var app = document.getElementById('app');
+
+  function slugify(s) {
+    return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  }
+
+  function el(tag, attrs, children) {
+    var e = document.createElement(tag);
+    for (var k in (attrs || {})) {
+      if (k === 'text') e.textContent = attrs[k];
+      else e.setAttribute(k, attrs[k]);
+    }
+    (children || []).forEach(function (c) { if (c) e.appendChild(c); });
+    return e;
+  }
+
+  function fmtKickoff(iso) {
+    try {
+      return new Date(iso).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    } catch (e) { return iso; }
+  }
+
+  function teamCrest(team) {
+    if (team.logo_url) {
+      var img = document.createElement('img');
+      img.className = 'crest';
+      img.src = team.logo_url;
+      img.alt = team.name;
+      img.loading = 'lazy';
+      return img;
+    }
+    var initials = (team.code || team.name || '?').slice(0, 3).toUpperCase();
+    return el('div', { class: 'crest-fallback', text: initials });
+  }
+
+  function loadPseudo() {
+    try { return localStorage.getItem(PSEUDO_KEY) || ''; } catch (e) { return ''; }
+  }
+  function rememberPseudo(pseudo) {
+    try { localStorage.setItem(PSEUDO_KEY, pseudo); } catch (e) { /* ignore */ }
+  }
+
+  function apiFetch(path, opts) {
+    return fetch(API_BASE + path, opts).then(function (r) {
+      return r.json().then(function (body) { return { status: r.status, body: body }; });
+    });
+  }
+
+  function renderPicker(leagues) {
+    app.innerHTML = '';
+    app.appendChild(el('h1', { text: 'Jeu des Pronos' }));
+    app.appendChild(el('p', { text: 'Choisissez votre championnat :' }));
+    var picker = el('div', { class: 'picker' });
+    leagues.forEach(function (l) {
+      picker.appendChild(el('a', { href: '?league=' + encodeURIComponent(l.code), text: l.name }));
+    });
+    app.appendChild(picker);
+  }
+
+  function renderError(message) {
+    app.innerHTML = '';
+    app.appendChild(el('h1', { text: 'Jeu des Pronos' }));
+    app.appendChild(el('p', { text: message }));
+  }
+
+  function earliestUnlockedKickoff(games) {
+    var upcoming = games.filter(function (g) { return !g.is_locked; }).map(function (g) { return g.game.starts_at; });
+    if (upcoming.length === 0) return null;
+    upcoming.sort();
+    return upcoming[0];
+  }
+
+  function render(league, gameweek, games) {
+    app.innerHTML = '';
+    app.appendChild(el('h1', { text: 'Pronostics — ' + league.name }));
+
+    var intro = el('div', { class: 'intro' });
+    intro.appendChild(el('p', { text: 'Bienvenue sur la page de pronostics ' + league.name + '. Chaque semaine, faites vos pronostics pour la journée en cours.' }));
+    if (gameweek) {
+      var earliest = earliestUnlockedKickoff(games);
+      if (earliest) {
+        intro.appendChild(el('p', { text: 'Chaque match se verrouille à son propre coup d’envoi — le premier est le ' + fmtKickoff(earliest) + '.' }));
+      } else if (games.length > 0) {
+        intro.appendChild(el('p', { text: 'Tous les matchs de cette journée ont déjà commencé.' }));
+      }
+    }
+    var reminder = el('p', { class: 'reminder' });
+    reminder.innerHTML = 'N’oubliez pas d’utiliser <strong>le même pseudo</strong> chaque semaine pour que vos scores s’accumulent (le pseudo est sensible à la casse : « Lio92 » et « lio92 » sont deux joueurs différents).';
+    intro.appendChild(reminder);
+    intro.appendChild(el('p', { text: 'Bons pronos et bonne chance…' }));
+    app.appendChild(intro);
+
+    if (!gameweek || games.length === 0) {
+      app.appendChild(el('p', { text: 'Aucune journée n’est ouverte pour ce championnat en ce moment. Revenez plus tard.' }));
+      return;
+    }
+
+    var globalMessage = el('div', { id: 'global-message' });
+    app.appendChild(globalMessage);
+
+    var pseudoLabel = el('label', { for: 'pseudo', text: 'Pseudo' });
+    var pseudoInput = el('input', { type: 'text', id: 'pseudo', value: loadPseudo(), maxlength: '60', required: 'required' });
+    var emailLabel = el('label', { for: 'email', text: 'Email' });
+    var emailInput = el('input', { type: 'email', id: 'email' });
+    var emailHint = el('p', { class: 'field-hint', text: '(optionnel, pour recevoir un email de confirmation)' });
+
+    app.appendChild(pseudoLabel);
+    app.appendChild(pseudoInput);
+    app.appendChild(emailLabel);
+    app.appendChild(emailInput);
+    app.appendChild(emailHint);
+
+    var matchRows = [];
+
+    games.forEach(function (g) {
+      var game = g.game;
+      var locked = g.is_locked;
+      var row = el('div', { class: 'match' + (locked ? ' locked' : '') });
+
+      var homeInput = el('input', {
+        type: 'number', min: '0', step: '1', 'aria-label': game.home_team.name + ' score',
+      });
+      var awayInput = el('input', {
+        type: 'number', min: '0', step: '1', 'aria-label': game.away_team.name + ' score',
+      });
+      if (g.my_prediction) {
+        homeInput.value = g.my_prediction.predicted_home_score;
+        awayInput.value = g.my_prediction.predicted_away_score;
+      }
+      if (locked) {
+        homeInput.disabled = true;
+        awayInput.disabled = true;
+      }
+
+      row.appendChild(el('div', { class: 'home-name', text: game.home_team.name }));
+      row.appendChild(teamCrest(game.home_team));
+      row.appendChild(homeInput);
+      row.appendChild(el('span', { class: 'dash', text: '-' }));
+      row.appendChild(awayInput);
+      row.appendChild(teamCrest(game.away_team));
+      row.appendChild(el('div', { class: 'away-name', text: game.away_team.name }));
+
+      var meta = el('div', {
+        class: 'match-meta',
+        text: (locked ? 'Verrouillé — coup d’envoi ' : 'Coup d’envoi ') + fmtKickoff(game.starts_at),
+      });
+      row.appendChild(meta);
+
+      var status = el('div', { class: 'match-status' });
+      row.appendChild(status);
+
+      app.appendChild(row);
+      matchRows.push({ game: game, locked: locked, homeInput: homeInput, awayInput: awayInput, status: status });
+    });
+
+    var submitBtn = el('button', { id: 'submit', type: 'button', text: 'J’envoie' });
+    app.appendChild(submitBtn);
+
+    submitBtn.addEventListener('click', function () {
+      var pseudo = pseudoInput.value.trim();
+      if (!pseudo) {
+        globalMessage.className = 'error';
+        globalMessage.textContent = 'Merci de renseigner votre pseudo.';
+        pseudoInput.focus();
+        return;
+      }
+      var email = emailInput.value.trim();
+
+      var toSubmit = matchRows.filter(function (row) {
+        return !row.locked && row.homeInput.value !== '' && row.awayInput.value !== '';
+      });
+      if (toSubmit.length === 0) {
+        globalMessage.className = 'error';
+        globalMessage.textContent = 'Entrez au moins un score avant d’envoyer.';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      globalMessage.className = '';
+      globalMessage.textContent = 'Envoi en cours…';
+
+      var results = toSubmit.map(function (row) {
+        row.status.className = 'match-status';
+        row.status.textContent = '';
+        var payload = {
+          league_id: league.id,
+          game_id: row.game.id,
+          pseudo: pseudo,
+          predicted_home_score: parseInt(row.homeInput.value, 10),
+          predicted_away_score: parseInt(row.awayInput.value, 10),
+        };
+        if (email) payload.email = email;
+
+        return apiFetch('/v1/predictions', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).then(function (res) {
+          if (res.status === 200) {
+            row.status.className = 'match-status ok';
+            row.status.textContent = '✓ enregistré';
+            return true;
+          }
+          row.status.className = 'match-status error';
+          if (res.status === 409) {
+            row.status.textContent = 'Ce match a déjà commencé.';
+          } else {
+            row.status.textContent = (res.body && res.body.error && res.body.error.message) || 'Erreur lors de l’envoi.';
+          }
+          return false;
+        }).catch(function () {
+          row.status.className = 'match-status error';
+          row.status.textContent = 'Connexion impossible. Réessayez.';
+          return false;
+        });
+      });
+
+      Promise.all(results).then(function (outcomes) {
+        submitBtn.disabled = false;
+        var okCount = outcomes.filter(Boolean).length;
+        if (okCount > 0) rememberPseudo(pseudo);
+        if (okCount === outcomes.length) {
+          globalMessage.className = 'ok';
+          globalMessage.textContent = 'Tous vos pronostics ont été enregistrés.';
+        } else if (okCount > 0) {
+          globalMessage.className = 'error';
+          globalMessage.textContent = okCount + ' sur ' + outcomes.length + ' pronostics enregistrés — voir les erreurs ci-dessus.';
+        } else {
+          globalMessage.className = 'error';
+          globalMessage.textContent = 'Aucun pronostic n’a pu être enregistré — voir les erreurs ci-dessus.';
+        }
+      });
+    });
+  }
+
+  function boot() {
+    var params = new URLSearchParams(location.search);
+    var wanted = params.get('league');
+
+    apiFetch('/v1/leagues', {}).then(function (res) {
+      if (res.status !== 200) throw new Error('leagues fetch failed');
+      var leagues = res.body.data || [];
+      if (leagues.length === 0) {
+        renderError('Aucun championnat n’est configuré pour le moment.');
+        return;
+      }
+      if (!wanted) {
+        renderPicker(leagues);
+        return;
+      }
+      var wantedSlug = slugify(wanted);
+      var league = leagues.find(function (l) {
+        return l.code.toLowerCase() === wanted.toLowerCase() || slugify(l.name) === wantedSlug;
+      });
+      if (!league) {
+        renderPicker(leagues);
+        return;
+      }
+      var pseudo = loadPseudo();
+      var q = pseudo ? ('?pseudo=' + encodeURIComponent(pseudo)) : '';
+      apiFetch('/v1/leagues/' + league.id + '/current' + q, {}).then(function (res2) {
+        if (res2.status !== 200) throw new Error('current gameweek fetch failed');
+        render(res2.body.league, res2.body.gameweek, res2.body.games || []);
+      });
+    }).catch(function () {
+      renderError('Impossible de charger la page pour le moment. Réessayez dans un instant.');
+    });
+  }
+
+  boot();
+})();
+</script>
+
+<footer>jeu-des-pronos</footer>
+</body>
+</html>
