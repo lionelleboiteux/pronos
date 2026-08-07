@@ -172,19 +172,41 @@
       "notes": "Committed df02319 on feat/jeu-des-pronos, pushed, PR #1 opened against main: https://github.com/lionelleboiteux/pronos/pull/1"
     },
     "pipeline": {
-      "status": "pending",
-      "artifacts": [],
-      "actor": null,
-      "model": null,
-      "at": null,
+      "status": "passed",
+      "artifacts": [
+        {
+          "path": "pdlc/jeu-des-pronos/10-pipeline.v1.md",
+          "sha256": "cc610b526a9ab02ff1f3aadfc34bd772bb5973789b6500be325a46565ac34b1f",
+          "recorded": "2026-08-07T12:01:54Z"
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "sha256": "e21e07a173c450fb3546b388dbf23c56e9211bf7ae951763a30de399842455bb",
+          "recorded": "2026-08-07T12:01:54Z"
+        }
+      ],
+      "actor": "claude",
+      "model": "sonnet",
+      "at": "2026-08-07T12:01:54Z",
       "notes": null
     },
     "dashboard": {
-      "status": "pending",
-      "artifacts": [],
-      "actor": null,
-      "model": null,
-      "at": null,
+      "status": "passed",
+      "artifacts": [
+        {
+          "path": "pdlc/jeu-des-pronos/11-dashboard.v1.md",
+          "sha256": "6c5c2bb26c1949d3e484b2acbc00d53e98ea0ffc911af6b829df0a3833fb3d8a",
+          "recorded": "2026-08-07T12:41:12Z"
+        },
+        {
+          "path": "dashboard/index.html",
+          "sha256": "ada9fa3fbdf1e5f516b8f3ca043795551c3f625fde56f30f8536d5301fc33483",
+          "recorded": "2026-08-07T12:41:12Z"
+        }
+      ],
+      "actor": "claude",
+      "model": "sonnet",
+      "at": "2026-08-07T12:41:12Z",
       "notes": null
     },
     "release": {
@@ -319,6 +341,28 @@
         "pdlc/jeu-des-pronos/adr/0003-migration-discipline-as-backup-substitute.md",
         "pdlc/jeu-des-pronos/contracts/openapi.yaml",
         "pdlc/jeu-des-pronos/contracts/db-schema.sql"
+      ]
+    },
+    {
+      "at": "2026-08-07T12:01:54Z",
+      "event": "pass",
+      "gate": "pipeline",
+      "actor": "claude",
+      "model": "sonnet",
+      "artifacts": [
+        "pdlc/jeu-des-pronos/10-pipeline.v1.md",
+        ".github/workflows/deploy.yml"
+      ]
+    },
+    {
+      "at": "2026-08-07T12:41:12Z",
+      "event": "pass",
+      "gate": "dashboard",
+      "actor": "claude",
+      "model": "sonnet",
+      "artifacts": [
+        "pdlc/jeu-des-pronos/11-dashboard.v1.md",
+        "dashboard/index.html"
       ]
     }
   ]
