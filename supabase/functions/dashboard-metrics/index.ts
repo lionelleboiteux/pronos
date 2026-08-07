@@ -15,6 +15,15 @@ if (!databaseUrl) throw new Error('SUPABASE_DB_URL (or DATABASE_URL) must be set
 
 const pool = new Pool(databaseUrl, 1, true);
 
+// The dashboard is served from a different origin (GitHub Pages), so this
+// needs to be a real CORS response, not just a JSON one — a browser fetch
+// silently fails without it even though curl (no origin enforcement) can't
+// catch that. Public, non-sensitive aggregate data; no credentials involved.
+const CORS_HEADERS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, OPTIONS',
+};
+
 type WeeklyAdminMinutes = { week_start: string; total_minutes: number };
 
 async function weeklyAdminMinutes(): Promise<WeeklyAdminMinutes[]> {
@@ -46,7 +55,9 @@ async function scoringRunCount(): Promise<number> {
   }
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });
+
   try {
     const [weekly, scoringRuns] = await Promise.all([weeklyAdminMinutes(), scoringRunCount()]);
     const series = weekly.map((w) => ({ date: w.week_start, value: w.total_minutes }));
@@ -88,11 +99,11 @@ Deno.serve(async () => {
       },
     };
 
-    return Response.json(body, { headers: { 'cache-control': 'no-store' } });
+    return Response.json(body, { headers: { 'cache-control': 'no-store', ...CORS_HEADERS } });
   } catch (err) {
     return Response.json(
       { error: 'dashboard-metrics query failed', message: err instanceof Error ? err.message : String(err) },
-      { status: 500 },
+      { status: 500, headers: CORS_HEADERS },
     );
   }
 });
