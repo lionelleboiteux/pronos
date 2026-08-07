@@ -31,7 +31,7 @@ const GMAIL_USER = 'fantasycoachfr@gmail.com';
  * receipt (src/api/sendGameweekReceipt.ts), never per-match.
  */
 const mailer = {
-  async sendReceipt(to: string, subject: string, text: string): Promise<boolean> {
+  async sendReceipt(to: string, subject: string, text: string, html: string): Promise<boolean> {
     if (!gmailAppPassword) {
       console.error('GMAIL_APP_PASSWORD is not set — cannot send email.');
       return false;
@@ -50,6 +50,7 @@ const mailer = {
         to,
         subject,
         content: text,
+        html,
       });
       return true;
     } catch (err) {

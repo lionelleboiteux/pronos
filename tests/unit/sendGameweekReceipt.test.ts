@@ -51,18 +51,74 @@ describe('buildReceiptEmail', () => {
     expect(subject).toBe('Confirmation de pronos Ligue 1 J15');
   });
 
-  it('formats the body as "Salut {pseudo}", one "{home} {H} - {A} {away}" line per match, then "Bonne chance"', async () => {
+  it('formats the text body as "Salut {pseudo}", one "{home} {H} - {A} {away}" line per match, then "Bonne chance"', async () => {
     const api = await loadSendGameweekReceipt();
+    // Equal-length home names here so padding (tested separately below)
+    // doesn't change the line shape this test is checking.
+    const evenNames: typeof TWO_MATCH_GAMEWEEK = {
+      league_name: 'Ligue 1',
+      gameweek_number: 15,
+      picks: [
+        { home_team: 'AS Monaco', away_team: 'Paris Saint-Germain', predicted_home_score: 2, predicted_away_score: 1, starts_at: new Date() },
+        { home_team: 'FC Nantes', away_team: 'LOSC Lille', predicted_home_score: 0, predicted_away_score: 0, starts_at: new Date() },
+      ],
+    };
 
-    const { text } = api.buildReceiptEmail('Lio_92', TWO_MATCH_GAMEWEEK);
+    const { text } = api.buildReceiptEmail('Lio_92', evenNames);
 
     expect(text).toBe(
       'Salut Lio_92\n\n' +
         'Voici la confirmation que nous avons bien reçu tes pronos:\n\n' +
-        'Olympique de Marseille 2 - 1 Paris Saint-Germain\n' +
-        'AS Monaco 0 - 0 LOSC Lille\n\n' +
+        'AS Monaco  2 - 1  Paris Saint-Germain\n' +
+        'FC Nantes  0 - 0  LOSC Lille\n\n' +
         'Bonne chance',
     );
+  });
+
+  it('right-pads the shorter home team name in the text body so scores line up', async () => {
+    const api = await loadSendGameweekReceipt();
+
+    const { text } = api.buildReceiptEmail('Lio_92', TWO_MATCH_GAMEWEEK);
+    const scoreColumn = text
+      .split('\n')
+      .filter((line) => line.includes(' - '))
+      .map((line) => line.indexOf(' - '));
+
+    // Both lines' " - " separator lands at the same column, i.e. the
+    // shorter home team name ("AS Monaco") was padded to match the
+    // longer one ("Olympique de Marseille").
+    expect(new Set(scoreColumn).size).toBe(1);
+  });
+
+  it('renders the html body as a table with the home team right-aligned and the away team left-aligned, like the webpage', async () => {
+    const api = await loadSendGameweekReceipt();
+
+    const { html } = api.buildReceiptEmail('Lio_92', TWO_MATCH_GAMEWEEK);
+
+    expect(html).toContain('<table');
+    expect(html).toContain('text-align:right');
+    expect(html).toContain('text-align:left');
+    expect(html).toContain('Olympique de Marseille');
+    expect(html).toContain('>2</td>');
+    expect(html).toContain('>1</td>');
+    expect(html).toContain('Paris Saint-Germain');
+  });
+
+  it('escapes player-controlled team/pseudo text in the html body', async () => {
+    const api = await loadSendGameweekReceipt();
+    const withMarkup: typeof TWO_MATCH_GAMEWEEK = {
+      league_name: 'Ligue 1',
+      gameweek_number: 15,
+      picks: [
+        { home_team: '<b>Home</b>', away_team: 'Away', predicted_home_score: 1, predicted_away_score: 0, starts_at: new Date() },
+      ],
+    };
+
+    const { html } = api.buildReceiptEmail('<script>x</script>', withMarkup);
+
+    expect(html).not.toContain('<script>x</script>');
+    expect(html).not.toContain('<b>Home</b>');
+    expect(html).toContain('&lt;b&gt;Home&lt;/b&gt;');
   });
 });
 
@@ -78,6 +134,7 @@ describe('POST .../receipt', () => {
     expect(sentEmails).toHaveLength(1);
     expect(sentEmails[0].to).toBe('lio92@example.com');
     expect(sentEmails[0].subject).toBe('Confirmation de pronos Ligue 1 J15');
+    expect(sentEmails[0].html).toContain('<table');
   });
 
   it('reports email_sent: false, not an error, when the mailer itself fails', async () => {

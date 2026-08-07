@@ -524,7 +524,7 @@ export type SendReceiptDeps = {
   repo: {
     getPlayerGameweekPicks(league_id: string, gameweek_id: string, pseudo: string): Promise<GameweekPicks | null>;
   };
-  mailer: { sendReceipt(to: string, subject: string, text: string): Promise<boolean> };
+  mailer: { sendReceipt(to: string, subject: string, text: string, html: string): Promise<boolean> };
 };
 
 export interface SendGameweekReceiptModule {
@@ -532,7 +532,7 @@ export interface SendGameweekReceiptModule {
     req: SendReceiptRequest,
     deps: SendReceiptDeps,
   ): Promise<{ status: number; body: Record<string, unknown> }>;
-  buildReceiptEmail(pseudo: string, data: GameweekPicks): { subject: string; text: string };
+  buildReceiptEmail(pseudo: string, data: GameweekPicks): { subject: string; text: string; html: string };
 }
 
 export async function loadSendGameweekReceipt(): Promise<SendGameweekReceiptModule> {

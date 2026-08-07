@@ -166,22 +166,22 @@ export function buildAdminOverrideDeps(opts: {
 
 export type BuiltReceiptDeps = {
   deps: SendReceiptDeps;
-  sentEmails: Array<{ to: string; subject: string; text: string }>;
+  sentEmails: Array<{ to: string; subject: string; text: string; html: string }>;
 };
 
 export function buildReceiptDeps(
   picks: GameweekPicks | null,
   o: { mailerResult?: boolean } = {},
 ): BuiltReceiptDeps {
-  const sentEmails: Array<{ to: string; subject: string; text: string }> = [];
+  const sentEmails: Array<{ to: string; subject: string; text: string; html: string }> = [];
 
   const deps: SendReceiptDeps = {
     repo: {
       getPlayerGameweekPicks: async () => picks,
     },
     mailer: {
-      sendReceipt: async (to: string, subject: string, text: string) => {
-        sentEmails.push({ to, subject, text });
+      sendReceipt: async (to: string, subject: string, text: string, html: string) => {
+        sentEmails.push({ to, subject, text, html });
         return o.mailerResult ?? true;
       },
     },

@@ -37,7 +37,7 @@ export type Ctx = {
    * submitPrediction's own per-match mailer dependency is separate and
    * intentionally still a no-op (see the /v1/predictions handler).
    */
-  mailer: { sendReceipt(to: string, subject: string, text: string): Promise<boolean> };
+  mailer: { sendReceipt(to: string, subject: string, text: string, html: string): Promise<boolean> };
 };
 
 /**
