@@ -116,6 +116,13 @@ Deno.serve(async (req) => {
 
   return new Response(JSON.stringify(result.body), {
     status: result.status,
-    headers: { 'content-type': 'application/json', ...(('headers' in result ? result.headers : undefined) ?? {}) },
+    headers: {
+      'content-type': 'application/json',
+      // Lets a rollback (or any deploy) be verified from the outside: which
+      // code actually answered this request, not just "the deploy command
+      // exited 0". Supabase injects DENO_DEPLOYMENT_ID per function version.
+      'x-deployment-id': Deno.env.get('DENO_DEPLOYMENT_ID') ?? 'unknown',
+      ...(('headers' in result ? result.headers : undefined) ?? {}),
+    },
   });
 });

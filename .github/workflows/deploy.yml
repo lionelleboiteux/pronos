@@ -1,0 +1,93 @@
+name: Deploy
+
+# ADR-0003: every migration is expand-only, so there is no automated DB
+# rollback job here — rolling back means not deploying code that depends on
+# the new columns, and (per 02-architecture.v1.md §6) a manual pg_dump
+# before any destructive change is the only DB recovery path on Supabase
+# Free (no PITR). The `rollback` job below only re-deploys a previous git
+# tag's Edge Function code.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      rollback_to_tag:
+        description: 'Git tag to roll the Edge Function back to (e.g. v1.0.0)'
+        required: false
+        type: string
+
+env:
+  # Not a secret: the project ref is already public in the project's
+  # dashboard/API URL. SUPABASE_ACCESS_TOKEN (the credential that actually
+  # grants access) is a repo secret.
+  SUPABASE_PROJECT_REF: dmytkubjxwwwkroutvdu
+
+jobs:
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Set up contract test harness
+        run: npm run setup:contract
+
+      - name: Full test suite (pre-deploy gate)
+        run: npm test
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Push migrations (expand-only, ADR-0003)
+        run: supabase db push
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deploy Edge Function
+        run: supabase functions deploy api --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  rollback:
+    if: github.event_name == 'workflow_dispatch' && inputs.rollback_to_tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.rollback_to_tag }}
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      # Code-only rollback: redeploy the Edge Function as it existed at the
+      # target tag. No `db push` here — migrations are expand-only and are
+      # never rolled back (ADR-0003); the tag we deploy already worked
+      # against the current, forward-only schema.
+      - name: Redeploy Edge Function at ${{ inputs.rollback_to_tag }}
+        run: supabase functions deploy api --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
