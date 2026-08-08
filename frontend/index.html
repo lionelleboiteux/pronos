@@ -76,6 +76,13 @@
     color: var(--ink);
     font-size: 1rem;
   }
+  .contact-row {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 0 0.75rem;
+  }
+  .contact-row label { margin-top: 0; }
+  .contact-spacer { height: 2.6rem; }
   .match {
     display: grid;
     grid-template-columns: 1fr auto auto auto auto auto 1fr;
@@ -315,11 +322,12 @@
     var emailInput = el('input', { type: 'email', id: 'email' });
     var emailHint = el('p', { class: 'field-hint', text: '(optionnel, pour recevoir un email de confirmation)' });
 
-    app.appendChild(pseudoLabel);
-    app.appendChild(pseudoInput);
-    app.appendChild(emailLabel);
-    app.appendChild(emailInput);
-    app.appendChild(emailHint);
+    var contactRow = el('div', { class: 'contact-row' }, [
+      el('div', { class: 'field-pseudo' }, [pseudoLabel, pseudoInput]),
+      el('div', { class: 'field-email' }, [emailLabel, emailInput, emailHint]),
+    ]);
+    app.appendChild(contactRow);
+    app.appendChild(el('div', { class: 'contact-spacer' }));
 
     var matchRows = [];
 
