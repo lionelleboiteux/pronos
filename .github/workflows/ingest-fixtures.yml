@@ -1,0 +1,37 @@
+name: Ingest fixtures
+
+# Keeps `games` current: kickoff-time changes (postponements, TV
+# rescheduling) and final scores, for whichever gameweek is currently open in
+# each of the 5 leagues. Runs hourly rather than at one computed "the
+# gameweek just finished" instant — kickoff times move, so there's no single
+# trigger time to compute in advance; hourly means any change or final score
+# is picked up within the hour regardless. See scripts/ingestion/ for the
+# read (public API) / write (POST /v1/ingest/fixtures, bearer-token gated)
+# split and why: Edge Functions are the only write path (ADR-0001), so this
+# job never touches Postgres directly.
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch: {}
+
+env:
+  PRONOS_API_BASE: https://dmytkubjxwwwkroutvdu.supabase.co/functions/v1/api
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install --disable-pip-version-check -r scripts/ingestion/requirements.txt
+
+      - name: Sync fixtures
+        run: python3 scripts/ingestion/ingest_fixtures.py
+        env:
+          INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}

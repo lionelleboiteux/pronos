@@ -1,0 +1,5 @@
+# Cached API responses are transient data, never source. Ignore everything
+# here but keep the directory itself, since it is the default cache location.
+*
+!.gitignore
+!.gitkeep

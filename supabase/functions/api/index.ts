@@ -19,6 +19,8 @@ const databaseUrl = Deno.env.get('SUPABASE_DB_URL') ?? Deno.env.get('DATABASE_UR
 if (!databaseUrl) throw new Error('SUPABASE_DB_URL (or DATABASE_URL) must be set.');
 const adminToken = Deno.env.get('ADMIN_TOKEN');
 if (!adminToken) throw new Error('ADMIN_TOKEN must be set.');
+const ingestToken = Deno.env.get('INGEST_TOKEN');
+if (!ingestToken) throw new Error('INGEST_TOKEN must be set.');
 const gmailAppPassword = Deno.env.get('GMAIL_APP_PASSWORD');
 
 const GMAIL_USER = 'fantasycoachfr@gmail.com';
@@ -98,6 +100,7 @@ const queryExecutor: QueryExecutor = {
 const ctx: Ctx = {
   repo: createRepository(queryExecutor),
   adminToken,
+  ingestToken,
   rateLimiter: createRateLimiter({ max_requests: SUBMIT_RATE_LIMIT_PER_MINUTE, window_ms: 60_000 }),
   emailKeys: new Set(),
   adminResponses: new Map(),

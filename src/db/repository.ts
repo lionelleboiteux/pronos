@@ -8,6 +8,7 @@ import { runScoring, type ScoringRunPlayer } from '../domain/scoringRun.ts';
 import type { OverrideAction } from '../api/adminOverride.ts';
 import type { GameRecord } from '../api/submitPrediction.ts';
 import type { LeagueCurrentState } from '../api/getCurrentGameweek.ts';
+import type { FixtureInput } from '../api/syncFixtures.ts';
 import type { TelemetryEvent } from '../telemetry/events.ts';
 
 /**
@@ -214,11 +215,105 @@ export function createRepository(pool: QueryExecutor) {
     }
   }
 
+  /**
+   * Upserts one fixture from the scheduled sync (scripts/ingestion). Two
+   * upsert paths are needed, not one: the gameweek-1 rows this app launched
+   * with were seeded by hand with `external_id = null`, so the natural
+   * `(league_id, external_id)` unique constraint can never match them —
+   * every sync would insert a duplicate instead of updating. The team-pair
+   * match below finds those legacy rows by (gameweek, home, away) — a safe
+   * natural key, since `chk_different_teams` plus a single round-robin
+   * gameweek guarantees at most one meeting per pair — and backfills their
+   * external_id, so every gameweek after the first uses the fast, direct
+   * conflict path.
+   */
+  async function upsertFixture(
+    input: FixtureInput,
+  ): Promise<{ game_id: string; gameweek_id: string }> {
+    const season = await pool.query(
+      `select id from seasons where league_id = $1 order by created_at desc limit 1`,
+      [input.league_id],
+    );
+    const season_id = season.rows[0]?.id;
+    if (!season_id) {
+      throw new Error(`No season found for league ${input.league_id}; cannot ingest fixtures.`);
+    }
+
+    const gw = await pool.query(
+      `insert into gameweeks (league_id, season_id, number, starts_at)
+       values ($1, $2, $3, $4)
+       on conflict (season_id, number) do update
+         set starts_at = least(gameweeks.starts_at, excluded.starts_at), updated_at = now()
+       returning id`,
+      [input.league_id, season_id, input.gameweek_number, input.starts_at],
+    );
+    const gameweek_id = gw.rows[0].id as string;
+
+    const legacyMatch = await pool.query(
+      `update games
+          set external_id = $5, starts_at = $6, status = $7,
+              home_team_score = $8, away_team_score = $9, updated_at = now()
+        where league_id = $1 and gameweek_id = $2 and home_team_id = $3 and away_team_id = $4
+        returning id`,
+      [
+        input.league_id,
+        gameweek_id,
+        input.home_team_id,
+        input.away_team_id,
+        input.external_id,
+        input.starts_at,
+        input.status,
+        input.home_team_score,
+        input.away_team_score,
+      ],
+    );
+    if (legacyMatch.rows[0]) {
+      return { game_id: legacyMatch.rows[0].id, gameweek_id };
+    }
+
+    const inserted = await pool.query(
+      `insert into games
+         (league_id, season_id, gameweek_id, home_team_id, away_team_id,
+          external_id, starts_at, status, home_team_score, away_team_score)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       on conflict (league_id, external_id) do update
+         set gameweek_id = excluded.gameweek_id, starts_at = excluded.starts_at,
+             status = excluded.status, home_team_score = excluded.home_team_score,
+             away_team_score = excluded.away_team_score, updated_at = now()
+       returning id`,
+      [
+        input.league_id,
+        season_id,
+        gameweek_id,
+        input.home_team_id,
+        input.away_team_id,
+        input.external_id,
+        input.starts_at,
+        input.status,
+        input.home_team_score,
+        input.away_team_score,
+      ],
+    );
+    return { game_id: inserted.rows[0].id, gameweek_id };
+  }
+
   return {
     insertTelemetryEvents,
+    upsertFixture,
 
     async listLeagues() {
       const res = await pool.query(`select id, code, name, logo_url from leagues order by name`);
+      return res.rows;
+    },
+
+    /** Public, read-only — same trust tier as listLeagues. Feeds the ingest script's name/id resolution. */
+    async listTeams(league_id: string | null) {
+      const res = await pool.query(
+        `select id, league_id, name, code, external_id from teams
+          where $1::uuid is null or league_id = $1::uuid
+          order by name`,
+        [league_id],
+      );
       return res.rows;
     },
 

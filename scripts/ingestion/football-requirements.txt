@@ -1,0 +1,12 @@
+# Runtime dependencies
+requests>=2.28,<3
+urllib3>=1.26,<3
+
+# Time zone database. Bundled with CPython on Linux and macOS, but Windows has
+# no system zoneinfo, so this is required there for Europe/London conversion.
+tzdata>=2023.3; sys_platform == "win32"
+
+# Test dependencies. Included here so that the single documented install step
+# is enough to run `pytest` as well as the examples.
+pytest>=7.0
+responses>=0.23

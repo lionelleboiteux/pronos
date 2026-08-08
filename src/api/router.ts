@@ -20,6 +20,7 @@ import { handleGetCurrentGameweek } from './getCurrentGameweek.ts';
 import { handleGameweekOverride } from './adminOverride.ts';
 import { handleSubmitPrediction, type SubmitRequest } from './submitPrediction.ts';
 import { handleSendGameweekReceipt } from './sendGameweekReceipt.ts';
+import { handleSyncFixtures } from './syncFixtures.ts';
 import { SUBMIT_RATE_LIMIT_PER_MINUTE, type RateLimiter } from './rateLimit.ts';
 
 /** An ApiResponse plus any header the HTTP layer itself owes (e.g. Allow). */
@@ -28,6 +29,14 @@ export type HttpResponse = ApiResponse & { headers?: Record<string, string> };
 export type Ctx = {
   repo: Repository;
   adminToken: string;
+  /**
+   * Separate credential for the scheduled fixture-sync pipeline
+   * (scripts/ingestion + GitHub Actions), deliberately distinct from
+   * adminToken — least privilege for a CI-held secret. Defaults to
+   * adminToken so existing tests/entrypoints that don't set it explicitly
+   * keep working unchanged.
+   */
+  ingestToken?: string;
   rateLimiter: RateLimiter;
   /** Idempotency-Key replay stores, in-memory for a single function instance. */
   emailKeys: Set<string>;
@@ -111,6 +120,19 @@ const ROUTES: Route[] = [
     query: [],
     handlers: {
       GET: async (_req, ctx) => ({ status: 200, body: { data: await ctx.repo.listLeagues() } }),
+    },
+  },
+  {
+    pattern: /^\/v1\/teams$/,
+    query: ['league_id'],
+    handlers: {
+      GET: async (req, ctx) => {
+        const league_id = req.query.get('league_id');
+        if (league_id !== null && !Uuid.safeParse(league_id).success) {
+          return invalid('league_id must be a UUID.');
+        }
+        return { status: 200, body: { data: await ctx.repo.listTeams(league_id) } };
+      },
     },
   },
   {
@@ -283,6 +305,23 @@ const ROUTES: Route[] = [
         );
         await ctx.repo.insertTelemetryEvents(sink.events);
         return response;
+      },
+    },
+  },
+  {
+    pattern: /^\/v1\/ingest\/fixtures$/,
+    query: [],
+    handlers: {
+      POST: async (req, ctx) => {
+        return handleSyncFixtures(
+          { authorization: req.headers.authorization ?? null, body: req.body },
+          {
+            auth: {
+              verifyBearer: async (token) => ({ valid: token === (ctx.ingestToken ?? ctx.adminToken) }),
+            },
+            repo: ctx.repo,
+          },
+        );
       },
     },
   },
