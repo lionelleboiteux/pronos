@@ -426,6 +426,15 @@ export function createRepository(pool: QueryExecutor) {
       return res.rows[0];
     },
 
+    /** Parameterized insert only — never string-build this query (SQL injection). */
+    async insertFeedback(message: string, client_ip: string): Promise<{ id: string }> {
+      const res = await pool.query(
+        `insert into feedback (message, client_ip) values ($1, $2) returning id`,
+        [message, client_ip],
+      );
+      return res.rows[0];
+    },
+
     async getGameweekStandings(
       league_id: string,
       gameweek_id: string,

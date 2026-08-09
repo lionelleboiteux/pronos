@@ -21,7 +21,8 @@ import { handleGameweekOverride } from './adminOverride.ts';
 import { handleSubmitPrediction, type SubmitRequest } from './submitPrediction.ts';
 import { handleSendGameweekReceipt } from './sendGameweekReceipt.ts';
 import { handleSyncFixtures } from './syncFixtures.ts';
-import { SUBMIT_RATE_LIMIT_PER_MINUTE, type RateLimiter } from './rateLimit.ts';
+import { handleSubmitFeedback } from './submitFeedback.ts';
+import { SUBMIT_RATE_LIMIT_PER_MINUTE, createRateLimiter, type RateLimiter } from './rateLimit.ts';
 
 /** An ApiResponse plus any header the HTTP layer itself owes (e.g. Allow). */
 export type HttpResponse = ApiResponse & { headers?: Record<string, string> };
@@ -47,7 +48,15 @@ export type Ctx = {
    * intentionally still a no-op (see the /v1/predictions handler).
    */
   mailer: { sendReceipt(to: string, subject: string, text: string, html: string): Promise<boolean> };
+  /** Where POST /v1/feedback notifications go. Defaults to the game's own inbox. */
+  feedbackNotifyTo?: string;
 };
+
+const FEEDBACK_RATE_LIMIT_PER_MINUTE = 5;
+const feedbackRateLimiter = createRateLimiter({
+  max_requests: FEEDBACK_RATE_LIMIT_PER_MINUTE,
+  window_ms: 60_000,
+});
 
 /**
  * Transport-agnostic request shape. `headers` is single-valued: every header
@@ -320,6 +329,24 @@ const ROUTES: Route[] = [
               verifyBearer: async (token) => ({ valid: token === (ctx.ingestToken ?? ctx.adminToken) }),
             },
             repo: ctx.repo,
+          },
+        );
+      },
+    },
+  },
+  {
+    pattern: /^\/v1\/feedback$/,
+    query: [],
+    handlers: {
+      POST: async (req, ctx) => {
+        return handleSubmitFeedback(
+          { body: req.body, client_ip: req.client_ip },
+          {
+            repo: ctx.repo,
+            mailer: ctx.mailer,
+            rateLimiter: feedbackRateLimiter,
+            now: () => new Date(),
+            notifyTo: ctx.feedbackNotifyTo ?? 'fantasycoachfr@gmail.com',
           },
         );
       },
