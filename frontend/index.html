@@ -3,7 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Jeu des Pronos</title>
+<title>Pronostics Foot Gratuits | Ligue 1, Premier League, Bundesliga, Serie A, La Liga</title>
+<meta name="description" content="Faites vos pronostics foot gratuitement chaque semaine sur Ligue 1, Premier League, Bundesliga, Serie A et La Liga. Pronostiquez le score de chaque match, affrontez vos amis et suivez le classement — jeu de pronos 100% gratuit.">
+<link rel="canonical" href="https://pronos.fantasy-coach.fr/">
+<meta name="robots" content="index, follow">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Fantasy Coach">
+<meta property="og:title" content="Pronostics Foot Gratuits | Ligue 1, Premier League, Bundesliga, Serie A, La Liga">
+<meta property="og:description" content="Faites vos pronostics foot gratuitement chaque semaine sur 5 grands championnats. Pronostiquez les scores, affrontez vos amis, grimpez au classement.">
+<meta property="og:url" content="https://pronos.fantasy-coach.fr/">
+<meta property="og:image" content="https://static.wixstatic.com/media/449182_b075115d95e54908bebcaaef43561929~mv2.png/v1/fill/w_174,h_174,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/newlogo.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Pronostics Foot Gratuits | Fantasy Coach">
+<meta name="twitter:description" content="Pronostics foot gratuits chaque semaine : Ligue 1, Premier League, Bundesliga, Serie A, La Liga.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Pronostics Foot Gratuits — Fantasy Coach",
+  "url": "https://pronos.fantasy-coach.fr/",
+  "description": "Faites vos pronostics foot gratuitement chaque semaine sur Ligue 1, Premier League, Bundesliga, Serie A et La Liga.",
+  "inLanguage": "fr"
+}
+</script>
 <style>
   :root {
     /* fantasy-coach.fr's own blue (sampled from the live site), reused here
@@ -148,17 +170,35 @@
   #global-message { font-size: 0.9rem; margin-bottom: 1rem; }
   #global-message.error { color: var(--error); }
   #global-message.ok { color: var(--ok); }
-  .picker a {
-    display: block;
+  .league-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 0.6rem;
+  }
+  .league-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0.9rem 1rem;
-    margin-bottom: 0.6rem;
+    border-radius: 12px;
+    padding: 1.1rem 0.75rem;
     color: var(--ink);
     text-decoration: none;
     font-weight: 600;
+    text-align: center;
   }
+  .league-card:hover { border-color: var(--accent); }
+  .league-card-logo { width: 64px; height: 64px; object-fit: contain; }
+  .league-card-logo-fallback {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: var(--border); color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem; font-weight: 700;
+  }
+  .league-card-name { font-size: 0.95rem; }
 </style>
 </head>
 <body>
@@ -183,7 +223,10 @@
 </header>
 
 <main id="app">
-  <p>Chargement…</p>
+  <h1>Pronostics Foot Gratuits — Ligue 1, Premier League, Bundesliga, Serie A, La Liga</h1>
+  <p>Faites vos pronostics chaque semaine, gratuitement, sur les 5 plus grands championnats européens de football. Pronostiquez le score de chaque match, affrontez vos amis et suivez le classement de la saison.</p>
+  <p>Chargement des championnats…</p>
+  <noscript><p>Activez JavaScript pour accéder au jeu de pronostics.</p></noscript>
 </main>
 
 <script>
@@ -228,6 +271,30 @@
     return el('div', { class: 'crest-fallback', text: initials });
   }
 
+  /** Alt text carries "Pronostics" + the league name deliberately (SEO + a11y). */
+  function leagueCard(l) {
+    var card = el('a', { href: '?league=' + encodeURIComponent(l.code), class: 'league-card' });
+    if (l.logo_url) {
+      var img = document.createElement('img');
+      img.className = 'league-card-logo';
+      img.src = l.logo_url;
+      img.alt = 'Pronostics ' + l.name;
+      img.loading = 'lazy';
+      card.appendChild(img);
+    } else {
+      var initials = (l.code || l.name || '?').slice(0, 3).toUpperCase();
+      card.appendChild(el('div', { class: 'league-card-logo league-card-logo-fallback', text: initials }));
+    }
+    card.appendChild(el('span', { class: 'league-card-name', text: l.name }));
+    return card;
+  }
+
+  function leagueCards(leagues) {
+    var wrap = el('div', { class: 'league-cards' });
+    leagues.forEach(function (l) { wrap.appendChild(leagueCard(l)); });
+    return wrap;
+  }
+
   function loadPseudo() {
     try { return localStorage.getItem(PSEUDO_KEY) || ''; } catch (e) { return ''; }
   }
@@ -243,13 +310,12 @@
 
   function renderPicker(leagues) {
     app.innerHTML = '';
-    app.appendChild(el('h1', { text: 'Jeu des Pronos' }));
-    app.appendChild(el('p', { text: 'Choisissez votre championnat :' }));
-    var picker = el('div', { class: 'picker' });
-    leagues.forEach(function (l) {
-      picker.appendChild(el('a', { href: '?league=' + encodeURIComponent(l.code), text: l.name }));
-    });
-    app.appendChild(picker);
+    app.appendChild(el('h1', { text: 'Pronostics Foot Gratuits — Ligue 1, Premier League, Bundesliga, Serie A, La Liga' }));
+    var intro = el('div', { class: 'intro' });
+    intro.appendChild(el('p', { text: 'Faites vos pronostics chaque semaine, gratuitement, sur les 5 plus grands championnats européens de football. Pronostiquez le score de chaque match, affrontez vos amis et suivez le classement de la saison.' }));
+    app.appendChild(intro);
+    app.appendChild(el('p', { text: 'Choisissez un championnat pour commencer vos pronostics :' }));
+    app.appendChild(leagueCards(leagues));
   }
 
   function renderError(message) {
@@ -273,11 +339,7 @@
     var others = leagues.filter(function (l) { return l.id !== league.id; });
     if (others.length > 0) {
       app.appendChild(el('p', { text: 'Envie de pronostiquer un autre championnat ?' }));
-      var picker = el('div', { class: 'picker' });
-      others.forEach(function (l) {
-        picker.appendChild(el('a', { href: '?league=' + encodeURIComponent(l.code), text: l.name }));
-      });
-      app.appendChild(picker);
+      app.appendChild(leagueCards(others));
     }
   }
 
