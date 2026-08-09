@@ -84,9 +84,79 @@
   .site-footer { text-align: center; font-size: 0.8rem; color: var(--muted); margin: 2.5rem 0 1rem; }
   main { max-width: 640px; margin: 0 auto; }
   h1 { font-size: 1.4rem; margin: 0.5rem 0 1rem; }
+  /* Mobile-first: single flex column. .area-sidebar (rules+hof+ads) starts
+     dissolved (display:contents) so its children act as plain flex items of
+     .page-grid and `order` alone controls the reading order: rules,
+     predictions, hall of fame, ads, classement. DOM position never changes
+     between breakpoints — only `order` and `display` do. */
+  .page-grid { display: flex; flex-direction: column; gap: 1.25rem; }
+  .area-sidebar { display: contents; }
+  .area-predictions { order: 2; }
+  .area-league-logo { order: 0; }
+  .area-rules { order: 1; }
+  .area-hof { order: 3; }
+  .area-ads { order: 4; }
+  .area-classement { order: 5; }
+  @media (min-width: 960px) {
+    main { max-width: 1040px; }
+    /* .area-sidebar becomes a real box again — one grid item spanning both
+       rows, with its own independent flex-column stacking inside. That's
+       what keeps rules/hof/ads flush against each other instead of being
+       stretched apart to match predictions' much taller row track. */
+    .page-grid {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      grid-template-rows: auto auto;
+      gap: 1.5rem;
+    }
+    .area-predictions { grid-column: 1; grid-row: 1; }
+    .area-classement { grid-column: 1; grid-row: 2; }
+    .area-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      grid-column: 2;
+      grid-row: 1 / span 2;
+    }
+  }
   .intro { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
   .intro p { margin: 0.5rem 0; }
   .intro .reminder { font-size: 0.85rem; color: var(--muted); }
+  .feature-card {
+    background: var(--card);
+    border: 2px solid var(--accent);
+    border-radius: 16px;
+    padding: 1.1rem 1.25rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .feature-card h2 { font-size: 1.15rem; margin: 0 0 0.6rem; text-align: center; }
+  .rules-list { margin: 0 0 0.75rem; padding-left: 1.25rem; }
+  .rules-list li { margin: 0.3rem 0; }
+  .feature-card .rules-example { font-size: 0.88rem; color: var(--muted); margin: 0.4rem 0; }
+  .feature-card .rules-example strong { color: var(--ink); }
+  .hof-table { width: 100%; border-collapse: collapse; border: 1px solid var(--accent); border-radius: 8px; overflow: hidden; font-size: 0.9rem; }
+  .hof-table th { background: var(--accent); color: var(--accent-ink); font-weight: 600; padding: 0.5rem 0.4rem; }
+  .hof-table td { padding: 0.5rem 0.4rem; text-align: center; border-top: 1px solid var(--border); }
+  .hof-table tbody tr:nth-child(even) td { background: #eaf3fc; }
+  .hof-pending { text-align: center; color: var(--muted); font-size: 0.9rem; margin: 0.5rem 0 0; }
+  .ads-placeholder {
+    border-style: dashed;
+    min-height: 250px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .classement-table .classement-score { background: #dbeafe; font-weight: 700; }
+  .league-logo-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 1.25rem;
+  }
+  .league-logo-card-img { width: 84px; height: 84px; object-fit: contain; }
+  .league-logo-card-name { margin: 0; font-weight: 700; font-size: 1.05rem; }
+  .classement-table .classement-pseudo { text-align: left; }
   label { display: block; font-weight: 600; margin: 0.75rem 0 0.25rem; }
   .field-hint { font-size: 0.8rem; color: var(--muted); font-weight: 400; margin: 0.15rem 0 0; }
   input[type=text], input[type=email] {
@@ -295,6 +365,164 @@
     return wrap;
   }
 
+  function renderLeagueLogoCard(league) {
+    var card = el('div', { class: 'feature-card league-logo-card' });
+    if (league.logo_url) {
+      var img = document.createElement('img');
+      img.className = 'league-logo-card-img';
+      img.src = league.logo_url;
+      img.alt = 'Pronostics ' + league.name;
+      img.loading = 'lazy';
+      card.appendChild(img);
+    }
+    card.appendChild(el('p', { class: 'league-logo-card-name', text: league.name }));
+    return card;
+  }
+
+  /**
+   * Current scoring matrix (src/domain/scoring.ts, SPEC-SCORING-01, confirmed
+   * by Lio): 5 exact score / 3 correct outcome + goal difference / 2 correct
+   * outcome only / 0 otherwise. Not the 3+1+1 matrix from an earlier version
+   * of the game — keep this in sync with scoring.ts if that ever changes.
+   */
+  function renderRulesCard() {
+    var card = el('div', { class: 'feature-card' });
+    card.appendChild(el('h2', { text: 'Les Règles du Jeu' }));
+    var list = el('ul', { class: 'rules-list' });
+    list.appendChild(el('li', { text: '5 points pour le score exact' }));
+    list.appendChild(el('li', { text: '3 points pour le bon résultat + le bon écart de buts' }));
+    list.appendChild(el('li', { text: '2 points pour le bon résultat (victoire, nul ou défaite)' }));
+    list.appendChild(el('li', { text: '0 point si le résultat est faux' }));
+    card.appendChild(list);
+    var example = el('p', { class: 'rules-example' });
+    example.innerHTML = 'Par exemple, pour un match qui se termine <strong>3-1</strong> :<br>' +
+      'une prédiction de <strong>1-0</strong> rapporte 2 points (bon résultat) · ' +
+      'une prédiction de <strong>2-0</strong> rapporte 3 points (bon résultat + bon écart) · ' +
+      'une prédiction de <strong>3-1</strong> rapporte 5 points (score exact).';
+    card.appendChild(example);
+    return card;
+  }
+
+  /**
+   * Historic winners per league, sent by Lio one league at a time — extend
+   * this object as more leagues arrive. A league with no entry yet renders
+   * a "coming soon" placeholder rather than an empty table.
+   */
+  var HALL_OF_FAME = {
+    PL: [
+      { season: '2025-2026', winner: 'Mbappe', score: 663 },
+      { season: '2024-2025', winner: 'Le Raccoon', score: 691 },
+      { season: '2023-2024', winner: 'anfield33', score: 756 },
+      { season: '2022-2023', winner: 'Rodje', score: 707 },
+    ],
+    L1: [
+      { season: '2025-2026', winner: 'donmike17', score: 549 },
+      { season: '2024-2025', winner: 'Mbappe', score: 603 },
+      { season: '2023-2024', winner: 'Le Raccoon', score: 531 },
+      { season: '2022-2023', winner: 'le.ventrachoux', score: 771 },
+    ],
+    BL1: [
+      { season: '2025-2026', winner: 'Rodje', score: 551 },
+      { season: '2024-2025', winner: 'Mbappe', score: 502 },
+      { season: '2023-2024', winner: 'Mbappe', score: 573 },
+      { season: '2022-2023', winner: 'ajaboy58', score: 537 },
+    ],
+  };
+
+  function renderHallOfFameCard(league) {
+    var card = el('div', { class: 'feature-card' });
+    card.appendChild(el('h2', { text: 'Hall of Fame — ' + league.name }));
+    var rows = HALL_OF_FAME[league.code];
+    if (!rows) {
+      card.appendChild(el('p', { class: 'hof-pending', text: 'Classement historique à venir pour ' + league.name + '.' }));
+      return card;
+    }
+    var table = el('table', { class: 'hof-table' });
+    var thead = el('thead', {}, [
+      el('tr', {}, [
+        el('th', { text: 'Saison' }),
+        el('th', { text: 'Gagnant' }),
+        el('th', { text: 'Score' }),
+      ]),
+    ]);
+    var tbody = el('tbody');
+    rows.forEach(function (r) {
+      tbody.appendChild(el('tr', {}, [
+        el('td', { text: r.season }),
+        el('td', { text: r.winner }),
+        el('td', { text: r.score + ' pts' }),
+      ]));
+    });
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    card.appendChild(table);
+    return card;
+  }
+
+  /**
+   * No ad network wired in yet (needs a real AdSense publisher ID + a GDPR
+   * consent flow — flagged separately, not decided). This just reserves the
+   * layout slot at a standard IAB medium-rectangle size so the grid doesn't
+   * jump when a real ad unit lands here later.
+   */
+  function renderAdsPlaceholder() {
+    var card = el('div', { class: 'feature-card ads-placeholder' });
+    card.appendChild(el('p', { class: 'hof-pending', text: 'Emplacement publicitaire' }));
+    return card;
+  }
+
+  /**
+   * Total-season standings (GET .../standings/overall). The old site's
+   * "Classement général" also broke each player's score down by gameweek
+   * (columns 29, 30, 31…) — that history isn't exposed by the current API
+   * (only the season total/rank per player), so this shows rank/pseudo/score
+   * only. Adding the per-gameweek breakdown is a backend change, not a
+   * frontend one.
+   */
+  function renderClassementCard(league, season_id) {
+    var card = el('div', { class: 'feature-card' });
+    card.appendChild(el('h2', { text: 'Classement général — ' + league.name }));
+    var body = el('div', { class: 'classement-body' });
+    body.appendChild(el('p', { class: 'hof-pending', text: 'Chargement du classement…' }));
+    card.appendChild(body);
+
+    if (!season_id) {
+      body.innerHTML = '';
+      body.appendChild(el('p', { class: 'hof-pending', text: 'Le classement apparaîtra ici dès que la première journée aura été jouée.' }));
+      return card;
+    }
+
+    apiFetch('/v1/leagues/' + league.id + '/seasons/' + season_id + '/standings/overall?per_page=15', {})
+      .then(function (res) {
+        body.innerHTML = '';
+        var rows = (res.status === 200 && res.body.data) || [];
+        if (rows.length === 0) {
+          body.appendChild(el('p', { class: 'hof-pending', text: 'Aucun classement pour le moment — soyez le premier à pronostiquer !' }));
+          return;
+        }
+        var table = el('table', { class: 'hof-table classement-table' });
+        table.appendChild(el('thead', {}, [
+          el('tr', {}, [el('th', { text: '#' }), el('th', { text: 'Pseudo' }), el('th', { text: 'Score' })]),
+        ]));
+        var tbody = el('tbody');
+        rows.forEach(function (r) {
+          tbody.appendChild(el('tr', {}, [
+            el('td', { text: r.rank != null ? String(r.rank) : '—' }),
+            el('td', { class: 'classement-pseudo', text: r.pseudo }),
+            el('td', { class: 'classement-score', text: String(r.points) }),
+          ]));
+        });
+        table.appendChild(tbody);
+        body.appendChild(table);
+      })
+      .catch(function () {
+        body.innerHTML = '';
+        body.appendChild(el('p', { class: 'hof-pending', text: 'Impossible de charger le classement pour le moment.' }));
+      });
+
+    return card;
+  }
+
   function loadPseudo() {
     try { return localStorage.getItem(PSEUDO_KEY) || ''; } catch (e) { return ''; }
   }
@@ -350,9 +578,29 @@
     return upcoming[0];
   }
 
-  function render(league, gameweek, games, leagues) {
+  function render(league, gameweek, games, leagues, season_id) {
     app.innerHTML = '';
     app.appendChild(el('h1', { text: 'Pronostics — ' + league.name }));
+
+    // .area-sidebar groups rules/hof/ads into one box so they stack tightly
+    // on desktop (a CSS Grid item spanning predictions' full row height
+    // would otherwise inflate to match it, leaving a gap above hof/ads).
+    // On mobile the wrapper switches to display:contents, dissolving itself
+    // so its children become plain flex items again — `order` then puts
+    // them back in the exact requested reading order (rules, predictions,
+    // hof, ads, classement) without moving anything in the DOM.
+    var layout = el('div', { class: 'page-grid' });
+    var predictionsArea = el('div', { class: 'area-predictions' });
+    var sidebar = el('div', { class: 'area-sidebar' }, [
+      el('div', { class: 'area-league-logo' }, [renderLeagueLogoCard(league)]),
+      el('div', { class: 'area-rules' }, [renderRulesCard()]),
+      el('div', { class: 'area-hof' }, [renderHallOfFameCard(league)]),
+      el('div', { class: 'area-ads' }, [renderAdsPlaceholder()]),
+    ]);
+    layout.appendChild(predictionsArea);
+    layout.appendChild(sidebar);
+    layout.appendChild(el('div', { class: 'area-classement' }, [renderClassementCard(league, season_id)]));
+    app.appendChild(layout);
 
     var intro = el('div', { class: 'intro' });
     intro.appendChild(el('p', { text: 'Bienvenue sur la page de pronostics ' + league.name + '. Chaque semaine, faites vos pronostics pour la journée en cours.' }));
@@ -368,15 +616,15 @@
     reminder.innerHTML = 'N’oubliez pas d’utiliser <strong>le même pseudo</strong> chaque semaine pour que vos scores s’accumulent (le pseudo est sensible à la casse : « Lio92 » et « lio92 » sont deux joueurs différents).';
     intro.appendChild(reminder);
     intro.appendChild(el('p', { text: 'Bons pronos et bonne chance…' }));
-    app.appendChild(intro);
+    predictionsArea.appendChild(intro);
 
     if (!gameweek || games.length === 0) {
-      app.appendChild(el('p', { text: 'Aucune journée n’est ouverte pour ce championnat en ce moment. Revenez plus tard.' }));
+      predictionsArea.appendChild(el('p', { text: 'Aucune journée n’est ouverte pour ce championnat en ce moment. Revenez plus tard.' }));
       return;
     }
 
     var globalMessage = el('div', { id: 'global-message' });
-    app.appendChild(globalMessage);
+    predictionsArea.appendChild(globalMessage);
 
     var pseudoLabel = el('label', { for: 'pseudo', text: 'Pseudo' });
     var pseudoInput = el('input', { type: 'text', id: 'pseudo', value: loadPseudo(), maxlength: '60', required: 'required' });
@@ -388,8 +636,8 @@
       el('div', { class: 'field-pseudo' }, [pseudoLabel, pseudoInput]),
       el('div', { class: 'field-email' }, [emailLabel, emailInput, emailHint]),
     ]);
-    app.appendChild(contactRow);
-    app.appendChild(el('div', { class: 'contact-spacer' }));
+    predictionsArea.appendChild(contactRow);
+    predictionsArea.appendChild(el('div', { class: 'contact-spacer' }));
 
     var matchRows = [];
 
@@ -430,12 +678,12 @@
       var status = el('div', { class: 'match-status' });
       row.appendChild(status);
 
-      app.appendChild(row);
+      predictionsArea.appendChild(row);
       matchRows.push({ game: game, locked: locked, homeInput: homeInput, awayInput: awayInput, status: status });
     });
 
     var submitBtn = el('button', { id: 'submit', type: 'button', text: 'J’envoie' });
-    app.appendChild(submitBtn);
+    predictionsArea.appendChild(submitBtn);
 
     submitBtn.addEventListener('click', function () {
       var pseudo = pseudoInput.value.trim();
@@ -562,7 +810,7 @@
       var q = pseudo ? ('?pseudo=' + encodeURIComponent(pseudo)) : '';
       apiFetch('/v1/leagues/' + league.id + '/current' + q, {}).then(function (res2) {
         if (res2.status !== 200) throw new Error('current gameweek fetch failed');
-        render(res2.body.league, res2.body.gameweek, res2.body.games || [], leagues);
+        render(res2.body.league, res2.body.gameweek, res2.body.games || [], leagues, res2.body.season_id);
       });
     }).catch(function () {
       renderError('Impossible de charger la page pour le moment. Réessayez dans un instant.');
