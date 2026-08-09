@@ -15,6 +15,7 @@ on:
     branches: [main]
     paths:
       - 'frontend/index.html'
+      - 'frontend/ads.txt'
       - 'dashboard/index.html'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
@@ -39,6 +40,7 @@ jobs:
         run: |
           mkdir -p _site/dashboard
           cp frontend/index.html _site/index.html
+          cp frontend/ads.txt _site/ads.txt
           cp dashboard/index.html _site/dashboard/index.html
           # Custom domain (DNS: pronos.fantasy-coach.fr CNAME lionelleboiteux.github.io).
           # Must be re-written on every deploy — GitHub Pages drops the custom

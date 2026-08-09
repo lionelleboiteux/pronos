@@ -26,6 +26,33 @@
   "inLanguage": "fr"
 }
 </script>
+<!--
+  Google Funding Choices (GDPR consent for EU visitors) — must load before
+  the AdSense script below so ads only fire once consent is resolved. The
+  banner itself only appears once a "Privacy & messaging" GDPR message is
+  published in the AdSense account for pub-6481777982811975; this script
+  is the standard Google-published loader, keyed only by publisher ID.
+-->
+<script async src="https://fundingchoicesmessages.google.com/i/pub-6481777982811975?ers=1"></script>
+<script>
+  (function () {
+    function signalGooglefcPresent() {
+      if (!window.frames['googlefcPresent']) {
+        if (document.body) {
+          var iframe = document.createElement('iframe');
+          iframe.style.cssText = 'width: 0; height: 0; border: none; z-index: -1000; left: -1000px; top: -1000px;';
+          iframe.style.display = 'none';
+          iframe.name = 'googlefcPresent';
+          document.body.appendChild(iframe);
+        } else {
+          setTimeout(signalGooglefcPresent, 0);
+        }
+      }
+    }
+    signalGooglefcPresent();
+  })();
+</script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6481777982811975" crossorigin="anonymous"></script>
 <style>
   :root {
     /* fantasy-coach.fr's own blue (sampled from the live site), reused here
@@ -95,7 +122,6 @@
   .area-league-logo { order: 0; }
   .area-rules { order: 1; }
   .area-hof { order: 3; }
-  .area-ads { order: 4; }
   .area-classement { order: 5; }
   @media (min-width: 960px) {
     main { max-width: 1040px; }
@@ -139,13 +165,6 @@
   .hof-table td { padding: 0.5rem 0.4rem; text-align: center; border-top: 1px solid var(--border); }
   .hof-table tbody tr:nth-child(even) td { background: #eaf3fc; }
   .hof-pending { text-align: center; color: var(--muted); font-size: 0.9rem; margin: 0.5rem 0 0; }
-  .ads-placeholder {
-    border-style: dashed;
-    min-height: 250px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
   .classement-table .classement-score { background: #dbeafe; font-weight: 700; }
   .league-logo-card {
     display: flex;
@@ -460,18 +479,6 @@
   }
 
   /**
-   * No ad network wired in yet (needs a real AdSense publisher ID + a GDPR
-   * consent flow — flagged separately, not decided). This just reserves the
-   * layout slot at a standard IAB medium-rectangle size so the grid doesn't
-   * jump when a real ad unit lands here later.
-   */
-  function renderAdsPlaceholder() {
-    var card = el('div', { class: 'feature-card ads-placeholder' });
-    card.appendChild(el('p', { class: 'hof-pending', text: 'Emplacement publicitaire' }));
-    return card;
-  }
-
-  /**
    * Total-season standings (GET .../standings/overall). The old site's
    * "Classement général" also broke each player's score down by gameweek
    * (columns 29, 30, 31…) — that history isn't exposed by the current API
@@ -595,7 +602,6 @@
       el('div', { class: 'area-league-logo' }, [renderLeagueLogoCard(league)]),
       el('div', { class: 'area-rules' }, [renderRulesCard()]),
       el('div', { class: 'area-hof' }, [renderHallOfFameCard(league)]),
-      el('div', { class: 'area-ads' }, [renderAdsPlaceholder()]),
     ]);
     layout.appendChild(predictionsArea);
     layout.appendChild(sidebar);
