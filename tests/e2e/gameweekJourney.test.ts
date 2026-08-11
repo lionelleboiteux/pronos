@@ -18,7 +18,14 @@ import { seedLeague, seedPlayer, startTestDatabase, type BaselineIds, type TestD
  */
 
 const ADMIN_TOKEN = 'red-gate-admin-token';
-const KICKOFF = '2026-08-10T19:00:00Z';
+// Relative to test-run time, deliberately: a fixed past-tense date here goes
+// stale the moment real time passes it (the very first /v1/predictions call
+// in E2E-01 starts failing MATCH_LOCKED against the real clock — no injected
+// `now` exists on this Node HTTP entrypoint, see server.ts). Both tests below
+// already move the clock forward relative to *this* value via explicit
+// `update games set starts_at = ...` steps, so only "unlocked when seeded"
+// matters here, not any particular calendar date.
+const KICKOFF = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
 type E2EContext = {
   db: TestDatabase;
