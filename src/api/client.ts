@@ -26,6 +26,11 @@ export type PronosClient = {
     page?: number;
     per_page?: number;
   }): Promise<unknown>;
+  getCrossLeagueWeeklyStandings(args?: {
+    week?: string;
+    page?: number;
+    per_page?: number;
+  }): Promise<unknown>;
   listDuplicateFlags(args?: { status?: string }): Promise<unknown>;
   updateDuplicateFlagStatus(args: {
     flagId: string;
@@ -103,6 +108,9 @@ export function createPronosClient(opts: {
         'GET',
         `/v1/leagues/${leagueId}/seasons/${seasonId}/standings/overall${query({ page, per_page })}`,
       ),
+
+    getCrossLeagueWeeklyStandings: (args = {}) =>
+      call('GET', `/v1/standings/cross-league${query({ week: args.week, page: args.page, per_page: args.per_page })}`),
 
     listDuplicateFlags: (args = {}) =>
       call('GET', `/v1/admin/duplicate-flags${query({ status: args.status })}`),

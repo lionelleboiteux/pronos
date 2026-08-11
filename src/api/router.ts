@@ -242,6 +242,29 @@ const ROUTES: Route[] = [
     },
   },
   {
+    pattern: /^\/v1\/standings\/cross-league$/,
+    query: ['week', 'page', 'per_page'],
+    handlers: {
+      GET: async (req, ctx) => {
+        const week = req.query.get('week');
+        if (week !== null && !/^\d{4}-\d{2}-\d{2}$/.test(week)) {
+          return invalid('week must be a date in YYYY-MM-DD format.');
+        }
+        const q = paginationOf(req.query);
+        if (!q) return invalid('page and per_page must be within the documented ranges.');
+        const found = await ctx.repo.getCrossLeagueWeeklyStandings({ week, ...q });
+        return {
+          status: 200,
+          body: {
+            week_start: found.week_start,
+            data: found.rows,
+            pagination: paginationOut(found.total_items, q),
+          },
+        };
+      },
+    },
+  },
+  {
     pattern: /^\/v1\/admin\/duplicate-flags$/,
     query: ['status', 'league_id', 'gameweek_id', 'page', 'per_page'],
     handlers: {

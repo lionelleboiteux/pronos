@@ -488,6 +488,52 @@ paths:
         default:
           $ref: '#/components/responses/UnexpectedError'
 
+  /v1/standings/cross-league:
+    get:
+      operationId: getCrossLeagueWeeklyStandings
+      tags: [Standings]
+      summary: Get the cross-league ("European") table for one calendar week
+      description: |
+        One pseudo's points summed across every league for a single ISO
+        calendar week, plus the cumulative running total through that week.
+        Leagues run independent gameweek schedules with no shared numbering,
+        so the calendar week of each league's gameweek (its `starts_at`) is
+        the key used to line separate leagues up — not the gameweek number.
+        `rank` orders by the cumulative running total, not the week's points
+        alone. A week with no data anywhere returns `200` with an empty
+        `data` array and `week_start: null`, the same convention as AC-14
+        for a single league's empty gameweek.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/WeekQueryParam'
+        - $ref: '#/components/parameters/PageQueryParam'
+        - $ref: '#/components/parameters/PerPageQueryParam'
+      responses:
+        '200':
+          description: Cross-league standings for the requested (or most recent) week.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrossLeagueStandingsResponse'
+              example:
+                week_start: '2026-08-10'
+                data:
+                  - player_id: c2c2c2c2-0000-4a2b-9c3d-dddddddddddd
+                    pseudo: Lio_92
+                    points: 8
+                    running_points: 21
+                    rank: 1
+                    predictions_count: 3
+                    correct_results_count: 2
+                    exact_scores_count: 1
+                pagination:
+                  page: 1
+                  per_page: 20
+                  total_items: 1
+                  total_pages: 1
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
   /v1/admin/duplicate-flags:
     get:
       operationId: listDuplicateFlags
@@ -824,6 +870,18 @@ components:
         default: 20
       description: Maximum 100 rows per page.
       example: 20
+
+    WeekQueryParam:
+      name: week
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+      description: >-
+        The Monday (ISO calendar week start) to return standings for. Omit
+        to get the most recent week that has any data.
+      example: '2026-08-10'
 
     IdempotencyKeyHeader:
       name: Idempotency-Key
@@ -1325,6 +1383,60 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/StandingsEntry'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    CrossLeagueStandingsEntry:
+      type: object
+      required:
+        - player_id
+        - pseudo
+        - points
+        - running_points
+        - rank
+        - predictions_count
+        - correct_results_count
+        - exact_scores_count
+      properties:
+        player_id:
+          type: string
+          format: uuid
+        pseudo:
+          type: string
+        points:
+          type: integer
+          description: Points earned across all leagues in this calendar week only.
+        running_points:
+          type: integer
+          description: Cumulative points across all leagues, this week and every prior week.
+        rank:
+          type: integer
+          minimum: 1
+          description: Rank by running_points (the cumulative total), not this week's points alone.
+        predictions_count:
+          type: integer
+          minimum: 0
+        correct_results_count:
+          type: integer
+          minimum: 0
+        exact_scores_count:
+          type: integer
+          minimum: 0
+
+    CrossLeagueStandingsResponse:
+      type: object
+      required: [week_start, data, pagination]
+      properties:
+        week_start:
+          description: 'null only if no league has any scored gameweek yet.'
+          oneOf:
+            - type: string
+              format: date
+            - type: 'null'
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrossLeagueStandingsEntry'
         pagination:
           $ref: '#/components/schemas/Pagination'
 

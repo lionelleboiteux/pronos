@@ -70,6 +70,11 @@ const CONSUMER_CASES: ConsumerCase[] = [
     call: (c) => c.getOverallStandings({ leagueId: LEAGUE_LIGUE_1, seasonId: SEASON_ID }),
   },
   {
+    operationId: 'getCrossLeagueWeeklyStandings',
+    responseSchema: 'CrossLeagueStandingsResponse',
+    call: (c) => c.getCrossLeagueWeeklyStandings(),
+  },
+  {
     operationId: 'listDuplicateFlags',
     responseSchema: 'DuplicateFlagListResponse',
     call: (c) => c.listDuplicateFlags({ status: 'pending' }),

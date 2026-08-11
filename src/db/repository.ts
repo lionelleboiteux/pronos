@@ -57,6 +57,32 @@ export type StandingsPage = {
   total_items: number;
 };
 
+/**
+ * "European table" — one pseudo's points summed across every league for a
+ * given calendar week (leagues have no shared gameweek numbering, so the ISO
+ * week of each league_gameweek_standings row's gameweek is the only key that
+ * lines them up), plus the cumulative total through that week.
+ */
+export type CrossLeagueWeekQuery = { week: string | null; page: number; per_page: number };
+
+export type CrossLeagueStandingsPage = {
+  /** ISO date (Monday) of the week actually returned; null if no data exists yet. */
+  week_start: string | null;
+  rows: Array<{
+    player_id: string;
+    pseudo: string;
+    /** Points earned across all leagues in this calendar week only. */
+    points: number;
+    /** Cumulative points across all leagues, this week and every prior week. */
+    running_points: number;
+    rank: number;
+    predictions_count: number;
+    correct_results_count: number;
+    exact_scores_count: number;
+  }>;
+  total_items: number;
+};
+
 export type DuplicateFlagRow = {
   id: string;
   league_id: string;
@@ -102,6 +128,16 @@ const toStandingsPage = (rows: Array<Record<string, unknown>>): StandingsPage =>
   rows: rows.map(({ total_items, ...entry }) => {
     void total_items;
     return entry as StandingsPage['rows'][number];
+  }),
+  total_items: (rows[0]?.total_items as number | undefined) ?? 0,
+});
+
+const toCrossLeagueStandingsPage = (rows: Array<Record<string, unknown>>): CrossLeagueStandingsPage => ({
+  week_start: (rows[0]?.week_start as string | undefined) ?? null,
+  rows: rows.map(({ total_items, week_start, ...entry }) => {
+    void total_items;
+    void week_start;
+    return entry as CrossLeagueStandingsPage['rows'][number];
   }),
   total_items: (rows[0]?.total_items as number | undefined) ?? 0,
 });
@@ -465,6 +501,75 @@ export function createRepository(pool: QueryExecutor) {
         [season_id, q.per_page, offsetOf(q)],
       );
       return toStandingsPage(res.rows);
+    },
+
+    /**
+     * "European table": every league's league_gameweek_standings summed per
+     * pseudo per ISO calendar week (leagues have no shared gameweek
+     * numbering — the calendar week of each gameweek's starts_at is the only
+     * key that lines separate leagues up), with a running cumulative total.
+     * `q.week` null means "the most recent week with any data".
+     */
+    async getCrossLeagueWeeklyStandings(q: CrossLeagueWeekQuery): Promise<CrossLeagueStandingsPage> {
+      const res = await pool.query(
+        `with weekly as (
+           select s.player_id,
+                  -- Both this DB's default and Supabase's are the UTC timezone GUC
+                  -- (verified against the testcontainers image), so date_trunc('week',
+                  -- timestamptz) already truncates on the UTC calendar boundary here.
+                  date_trunc('week', gw.starts_at)::date as week_start,
+                  sum(s.points)::int as points,
+                  sum(s.predictions_count)::int as predictions_count,
+                  sum(s.correct_results_count)::int as correct_results_count,
+                  sum(s.exact_scores_count)::int as exact_scores_count
+             from league_gameweek_standings s
+             join gameweeks gw on gw.id = s.gameweek_id
+            group by s.player_id, date_trunc('week', gw.starts_at)
+         ),
+         -- Every week that any league scored, crossed with every player who has
+         -- ever appeared in weekly — a player silent in one week still shows a
+         -- 0-point row there so their running total visibly carries forward,
+         -- rather than the player vanishing from that week's table entirely.
+         weeks as (select distinct week_start from weekly),
+         active_players as (select distinct player_id from weekly),
+         grid as (
+           select ap.player_id, wk_week.week_start,
+                  coalesce(wk.points, 0) as points,
+                  coalesce(wk.predictions_count, 0) as predictions_count,
+                  coalesce(wk.correct_results_count, 0) as correct_results_count,
+                  coalesce(wk.exact_scores_count, 0) as exact_scores_count
+             from active_players ap
+             cross join weeks wk_week
+             left join weekly wk on wk.player_id = ap.player_id and wk.week_start = wk_week.week_start
+         ),
+         running as (
+           select g.*,
+                  sum(g.points) over (
+                    partition by g.player_id order by g.week_start
+                    rows between unbounded preceding and current row
+                  )::int as running_points
+             from grid g
+         ),
+         target_week as (
+           select coalesce($1::date, max(week_start)) as week_start from running
+         )
+         select r.player_id, p.pseudo,
+                -- Emitted as text, deliberately: node-postgres decodes a bare date
+                -- column as local midnight, and .toISOString() on that can land on
+                -- the wrong calendar day depending on the client machine's timezone.
+                to_char(r.week_start, 'YYYY-MM-DD') as week_start,
+                r.points, r.running_points,
+                rank() over (order by r.running_points desc)::int as rank,
+                r.predictions_count, r.correct_results_count, r.exact_scores_count,
+                (count(*) over ())::int as total_items
+           from running r
+           join players p on p.id = r.player_id
+           join target_week tw on tw.week_start = r.week_start
+          order by r.running_points desc, p.pseudo
+          limit $2 offset $3`,
+        [q.week, q.per_page, offsetOf(q)],
+      );
+      return toCrossLeagueStandingsPage(res.rows);
     },
 
     async listDuplicateFlags(filter: {

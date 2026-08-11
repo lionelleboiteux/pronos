@@ -318,6 +318,34 @@
     font-size: 0.9rem; font-weight: 700;
   }
   .league-card-name { font-size: 0.95rem; }
+  .league-card-europe {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+  }
+  .league-card-europe .league-card-logo-fallback {
+    background: rgba(255, 255, 255, 0.25);
+    color: var(--accent-ink);
+  }
+  .europe-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .europe-nav button {
+    background: var(--card);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 8px;
+    padding: 0.4rem 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .europe-nav button:disabled { opacity: 0.4; cursor: default; }
+  .europe-nav-week { font-size: 0.9rem; color: var(--muted); text-align: center; }
+  .back-link { display: inline-block; margin-bottom: 1rem; font-size: 0.9rem; color: var(--accent); text-decoration: none; }
 </style>
 </head>
 <body>
@@ -405,6 +433,14 @@
       card.appendChild(el('div', { class: 'league-card-logo league-card-logo-fallback', text: initials }));
     }
     card.appendChild(el('span', { class: 'league-card-name', text: l.name }));
+    return card;
+  }
+
+  /** Links to the cross-league ("European") table — every league's points, summed per pseudo per week. */
+  function europeTile() {
+    var card = el('a', { href: '?view=europe', class: 'league-card league-card-europe' });
+    card.appendChild(el('div', { class: 'league-card-logo league-card-logo-fallback', text: '🌍' }));
+    card.appendChild(el('span', { class: 'league-card-name', text: 'Classement Européen' }));
     return card;
   }
 
@@ -560,6 +596,101 @@
     return card;
   }
 
+  function fmtWeekRange(weekStart) {
+    try {
+      var start = new Date(weekStart + 'T00:00:00Z');
+      var end = new Date(start.getTime() + 6 * 86400000);
+      var opts = { day: 'numeric', month: 'short' };
+      return 'Semaine du ' + start.toLocaleDateString('fr-FR', opts) + ' au ' + end.toLocaleDateString('fr-FR', opts);
+    } catch (e) { return weekStart; }
+  }
+
+  /** Pure UTC date arithmetic — avoids the local-timezone day-shift bug this table's backend query had to work around too. */
+  function shiftWeek(weekStart, days) {
+    var d = new Date(weekStart + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /**
+   * The "European table" — GET /v1/standings/cross-league: one pseudo's
+   * points summed across every league for one calendar week, plus the
+   * running cumulative total. `week` is the requested week (YYYY-MM-DD, a
+   * Monday), or undefined for "the most recent week with any data".
+   */
+  function renderEuropeStandings(leagues, week) {
+    app.innerHTML = '';
+    app.appendChild(el('a', { href: '?', class: 'back-link', text: '← Retour à l’accueil' }));
+    app.appendChild(el('h1', { text: 'Classement Européen' }));
+    var intro = el('div', { class: 'intro' });
+    intro.appendChild(el('p', { text: 'Vos points cumulés sur tous les championnats, semaine après semaine.' }));
+    app.appendChild(intro);
+
+    var card = el('div', { class: 'feature-card' });
+    var nav = el('div', { class: 'europe-nav' });
+    var prevBtn = el('button', { type: 'button', text: '← Semaine précédente' });
+    var weekLabel = el('span', { class: 'europe-nav-week' });
+    var nextBtn = el('button', { type: 'button', text: 'Semaine suivante →' });
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
+    nav.appendChild(prevBtn);
+    nav.appendChild(weekLabel);
+    nav.appendChild(nextBtn);
+    card.appendChild(nav);
+    var body = el('div', { class: 'classement-body' });
+    body.appendChild(el('p', { class: 'hof-pending', text: 'Chargement du classement…' }));
+    card.appendChild(body);
+    app.appendChild(card);
+    app.appendChild(leagueCards(leagues));
+
+    var qs = '?per_page=50' + (week ? ('&week=' + encodeURIComponent(week)) : '');
+    apiFetch('/v1/standings/cross-league' + qs, {}).then(function (res) {
+      if (res.status !== 200) throw new Error('cross-league standings fetch failed');
+      var weekStart = res.body.week_start;
+      var rows = res.body.data || [];
+      // The week actually shown, or (for an empty week past the edge of any
+      // data) the week that was asked for — either way, enough to navigate.
+      var ref = weekStart || week || null;
+
+      weekLabel.textContent = weekStart
+        ? fmtWeekRange(weekStart)
+        : (ref ? 'Aucun classement pour cette semaine' : 'Aucun classement pour le moment');
+      prevBtn.disabled = !ref;
+      nextBtn.disabled = !ref;
+      prevBtn.onclick = function () { location.href = '?view=europe&week=' + encodeURIComponent(shiftWeek(ref, -7)); };
+      nextBtn.onclick = function () { location.href = '?view=europe&week=' + encodeURIComponent(shiftWeek(ref, 7)); };
+
+      body.innerHTML = '';
+      if (rows.length === 0) {
+        body.appendChild(el('p', { class: 'hof-pending', text: 'Le classement apparaîtra ici dès que la première journée aura été jouée dans un championnat.' }));
+        return;
+      }
+      var table = el('table', { class: 'hof-table classement-table' });
+      table.appendChild(el('thead', {}, [
+        el('tr', {}, [
+          el('th', { text: '#' }),
+          el('th', { text: 'Pseudo' }),
+          el('th', { text: 'Semaine' }),
+          el('th', { text: 'Total' }),
+        ]),
+      ]));
+      var tbody = el('tbody');
+      rows.forEach(function (r) {
+        tbody.appendChild(el('tr', {}, [
+          el('td', { text: String(r.rank) }),
+          el('td', { class: 'classement-pseudo', text: r.pseudo }),
+          el('td', { text: String(r.points) }),
+          el('td', { class: 'classement-score', text: String(r.running_points) }),
+        ]));
+      });
+      table.appendChild(tbody);
+      body.appendChild(table);
+    }).catch(function () {
+      body.innerHTML = '';
+      body.appendChild(el('p', { class: 'hof-pending', text: 'Impossible de charger le classement pour le moment.' }));
+    });
+  }
+
   /**
    * POST /v1/feedback — no client-side email sending (deliberately: that
    * would need Gmail credentials in page-visible JS, an open door for abuse).
@@ -638,7 +769,9 @@
     intro.appendChild(el('p', { text: 'Faites vos pronostics chaque semaine, gratuitement, sur les 5 plus grands championnats européens de football. Pronostiquez le score de chaque match, affrontez vos amis et suivez le classement de la saison.' }));
     app.appendChild(intro);
     app.appendChild(el('p', { text: 'Choisissez un championnat pour commencer vos pronostics :' }));
-    app.appendChild(leagueCards(leagues));
+    var cards = leagueCards(leagues);
+    cards.appendChild(europeTile());
+    app.appendChild(cards);
   }
 
   function renderError(message) {
@@ -881,12 +1014,17 @@
   function boot() {
     var params = new URLSearchParams(location.search);
     var wanted = params.get('league');
+    var view = params.get('view');
 
     apiFetch('/v1/leagues', {}).then(function (res) {
       if (res.status !== 200) throw new Error('leagues fetch failed');
       var leagues = res.body.data || [];
       if (leagues.length === 0) {
         renderError('Aucun championnat n’est configuré pour le moment.');
+        return;
+      }
+      if (view === 'europe') {
+        renderEuropeStandings(leagues, params.get('week') || undefined);
         return;
       }
       if (!wanted) {
