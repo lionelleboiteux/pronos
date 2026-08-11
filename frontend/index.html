@@ -436,10 +436,32 @@
     return card;
   }
 
+  /**
+   * The plain EU flag (12 gold stars on blue), a public-domain Europe symbol —
+   * not the European Commission's co-funding logo, which is reserved for
+   * EU-funded projects and would misleadingly imply an official affiliation.
+   */
+  function europeFlagIcon() {
+    var star = '0,-6 1.47,-2.02 5.71,-1.85 2.38,0.77 3.53,4.85 0,2.5 -3.53,4.85 -2.38,0.77 -5.71,-1.85 -1.47,-2.02';
+    var positions = [
+      [50, 18], [66, 22.29], [77.71, 34], [82, 50], [77.71, 66], [66, 77.71],
+      [50, 82], [34, 77.71], [22.29, 66], [18, 50], [22.29, 34], [34, 22.29]
+    ];
+    var stars = positions.map(function (p) {
+      return '<polygon points="' + star + '" transform="translate(' + p[0] + ',' + p[1] + ')"/>';
+    }).join('');
+    var wrap = document.createElement('div');
+    wrap.innerHTML = '<svg viewBox="0 0 100 100" width="64" height="64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Europe">' +
+      '<circle cx="50" cy="50" r="50" fill="#003399"/><g fill="#FFCC00">' + stars + '</g></svg>';
+    var svg = wrap.firstChild;
+    svg.setAttribute('class', 'league-card-logo');
+    return svg;
+  }
+
   /** Links to the cross-league ("European") table — every league's points, summed per pseudo per week. */
   function europeTile() {
     var card = el('a', { href: '?view=europe', class: 'league-card league-card-europe' });
-    card.appendChild(el('div', { class: 'league-card-logo league-card-logo-fallback', text: '🌍' }));
+    card.appendChild(europeFlagIcon());
     card.appendChild(el('span', { class: 'league-card-name', text: 'Classement Européen' }));
     return card;
   }
