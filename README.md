@@ -4,7 +4,7 @@ A football prediction game automation system that consolidates and automates a 1
 
 ## Overview
 
-Players submit score predictions for matches in their league of choice before kickoff. The system locks submissions at match start (server-side, never trusting the client) and, once results are recorded, computes scores (5 points for exact prediction, 3 for correct result, 2 for correct goal differential, 0 otherwise) and ranks players by points. It detects near-duplicate player pseudos (typos like "Lio_92" vs "Lio92") for manual review, and provides an admin interface for manual overrides. See "Current Status" below for what's actually wired versus still pending — notably, fetching real match results automatically isn't built yet.
+Players submit score predictions for matches in their league of choice before kickoff. The system locks submissions at match start (server-side, never trusting the client) and, once results are recorded, computes scores (5 points for exact prediction, 3 for correct result, 2 for correct goal differential, 0 otherwise) and ranks players by points. It detects near-duplicate player pseudos (typos like "Lio_92" vs "Lio92") for manual review, and provides an admin interface for manual overrides. See "Current Status" below for what's actually wired versus still pending.
 
 The game runs weekly during the football season across ~10-20 players per league. Success is measured by reducing weekly admin time from ~1 hour to under 5 minutes.
 
@@ -114,18 +114,17 @@ Full specification in [`pdlc/jeu-des-pronos/contracts/openapi.yaml`](pdlc/jeu-de
 - Per-league independence: gameweek transitions and scoring run per-league without interference
 - Configurable 4th league via `leagues.config` (database, no code changes)
 - RLS, rate limiting (10 req/min per IP), and other security controls
+- Fixture/results ingestion: hourly GitHub Actions job (`.github/workflows/ingest-fixtures.yml`) syncs each of the 5 leagues' currently-open gameweek from live league data into `games` via `POST /v1/ingest/fixtures`
+- `match_locked` / `gameweek_opened` / `gameweek_closed` are now emitted automatically: `POST /v1/internal/tick` (`src/api/tick.ts`) is the pg_cron/pg_net entry point into the previously-unwired `gameweekTransition.tick()`, scheduled every minute by `db/migrations/20260825090000_schedule_gameweek_transition_tick.sql`
 
 **What's built but not yet end-to-end wired:**
 
-Four of eight telemetry event types have correct domain logic and unit tests, but the pg_cron/pg_net trigger points that fire them in production are not yet wired into this codebase:
-- `match_locked` — locked-at logic is tested, cron trigger to emit the event is pending
-- `gameweek_opened` — transition logic is tested, cron trigger pending
-- `gameweek_closed` — transition logic is tested, cron trigger pending
+One of eight telemetry event types has correct domain logic and unit tests, but no scheduled trigger in production yet:
 - `duplicate_flagged` — detection logic is tested, weekly cron job pending
 
-The other four event types (`prediction_submitted`, `prediction_rejected_late`, `scoring_run_completed`, `admin_manual_intervention`) are fully wired and firing. These do not block the current test suite because the event *logic* is proven correct and only the *scheduler entry point* (a pg_cron job definition) remains — but they do need to land before this can run unattended.
+The other seven event types (`match_locked`, `prediction_submitted`, `prediction_rejected_late`, `gameweek_opened`, `gameweek_closed`, `scoring_run_completed`, `admin_manual_intervention`) are wired and firing.
 
-**What's not built at all:** fixture ingestion — the per-league scraper or fallback API that would populate real match results into `games` — is a separate slice with its own red gate, never started in this repo. This build's game engine (scoring, locking, standings) is fully tested against `games` rows, however those rows get populated; nothing here fetches real results yet.
+**One manual deploy step:** the tick job's bearer token can't be committed to git — before it can call `POST /v1/internal/tick` successfully, run once from the Supabase SQL editor (using the same value already held as the `INGEST_TOKEN` secret): `select vault.create_secret('<the INGEST_TOKEN value>', 'tick_token');`. See the migration file for details.
 
 **Out of scope (explicitly excluded):**
 - Mini-leagues, native mobile app, AI prediction features, monetization, website migration to Wix

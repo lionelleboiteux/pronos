@@ -13,9 +13,9 @@ graph TB
     
     Postgres["[Postgres Database]<br/>Supabase Free<br/><br/>predictions, games, gameweeks<br/>leagues, seasons, teams, players<br/>standings (materialized views)<br/>telemetry_events<br/>duplicate_flags<br/>RLS: anon/authenticated = no access<br/>service_role = only via Edge Functions"]
     
-    Cron["[pg_cron Scheduler]<br/>PLANNED — not yet wired<br/><br/>Intended minute-level jobs:<br/>lock matches, open/close gameweeks,<br/>weekly duplicate scan<br/>— the domain logic for these exists<br/>and is tested, but no pg_cron job<br/>definition calls it yet"]
+    Cron["[pg_cron Scheduler]<br/>Wired for lock/open/close<br/><br/>Every minute: POST /v1/internal/tick<br/>(pg_net) runs gameweekTransition.tick(),<br/>emitting match_locked/gameweek_opened/<br/>gameweek_closed — db/migrations/<br/>20260825090000_schedule_gameweek_transition_tick.sql<br/><br/>Still PLANNED: weekly duplicate scan<br/>(domain logic exists and is tested,<br/>no cron job definition calls it yet)"]
     
-    Fixtures["[Fixture Sources]<br/>NOT YET BUILT<br/><br/>Planned: per-league scraper<br/>or fallback API, populating<br/>games.home_team_score /<br/>away_team_score<br/>— separate slice, own red gate,<br/>no code exists in this repo"]
+    Fixtures["[Fixture Sources]<br/>Hourly GitHub Actions job<br/><br/>scripts/ingestion/ingest_fixtures.py<br/>pulls each of the 5 leagues' open<br/>gameweek from live league data and<br/>POSTs to /v1/ingest/fixtures, which<br/>writes games.home_team_score /<br/>away_team_score"]
     
     Player -->|POST /v1/predictions| Edge
     Player -->|GET /v1/leagues| Edge
@@ -28,21 +28,26 @@ graph TB
     
     Edge -->|Read/write predictions,<br/>gameweeks, players,<br/>manage lock state| Postgres
     
-    Cron -.->|planned: run scheduled<br/>tasks inside Postgres| Postgres
-    Cron -.->|planned: INSERT into<br/>telemetry_events| Postgres
-    Cron -.->|planned: fetch fixtures| Fixtures
-    Fixtures -.->|planned: update match<br/>scores in games table| Postgres
+    Cron -->|every minute:<br/>POST /v1/internal/tick| Edge
+    Fixtures -->|hourly:<br/>POST /v1/ingest/fixtures| Edge
+    Cron -.->|planned: weekly<br/>duplicate scan| Postgres
     
     style Edge fill:#ffd700
     style Postgres fill:#4a90e2
-    style Cron fill:#dddddd,stroke-dasharray: 5 5
-    style Fixtures fill:#dddddd,stroke-dasharray: 5 5
+    style Cron fill:#7ed321
+    style Fixtures fill:#f5a623
     style Player fill:#e8e8e8
     style Admin fill:#e8e8e8
 ```
 
-Dashed nodes/edges above (`Cron`, `Fixtures`) are architecturally planned but not yet
-built — see "Telemetry" and the Verify-gate evidence linked below for exactly
+Cron and Fixtures both write through Edge Functions, never directly to Postgres
+(ADR-0001: Edge Functions are the only write path). They are two independent
+schedulers, not one calling the other: `Cron` is pg_cron/pg_net running inside
+Postgres itself; `Fixtures` is an hourly GitHub Actions job
+(`.github/workflows/ingest-fixtures.yml`) running outside it. The one
+remaining dashed edge (`Cron -.-> Postgres`, weekly duplicate scan) is
+architecturally planned but not yet built — see "Telemetry" and the
+Verify-gate evidence linked below for exactly
 which pieces exist as tested logic versus running code today.
 
 ## Design Rationale
