@@ -75,6 +75,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Added `tests/unit/tick.test.ts` (6 tests) covering auth, event persistence, the not-yet-locked no-op case, and the "no next gameweek ingested yet" case (left `current_gameweek_id` null rather than guessed at, same as the existing manual override's behavior).
 - Corrected this changelog's and the README's "Future Work"/"Current Status" sections, which had gone stale: fixture ingestion (`scripts/ingestion/`, `.github/workflows/ingest-fixtures.yml`) was in fact already built and running hourly for all 5 leagues, contrary to the "not part of this build at all" note previously here.
 
+### Contract-Fuzzing False Positive Fix (2026-08-25)
+
+**Deploying the tick migration surfaced a second, unrelated pre-existing issue: `POST /v1/admin/gameweeks/{gameweekId}/override`'s contract test started failing intermittently in CI**, blocking every deploy, not just this one. Root-caused by direct reproduction (`--seed 1` reproduces deterministically) against a local server: Schemathesis's `positive_data_acceptance` check generates a request from the operation's own documented example body while dropping the required `Idempotency-Key` header, then flags the resulting `400` as if the request should have been accepted. `missing_required_header` — the check actually responsible for verifying "reject a request missing a required header" — passes cleanly, confirming the API's behavior is correct and this is a check-level false positive, not a real contract violation.
+
+- `npm run setup:contract` now pins `schemathesis==4.25.2` instead of installing unpinned-`latest` — this project already hit the same failure mode once with `supabase/setup-cli@v1` (see v1.0.2), and unpinned tooling is what let this behavior surface without any change to this repo's own code.
+- `tests/support/schemathesis.ts` now passes `--exclude-checks positive_data_acceptance`. Verified narrow and safe, not masking real coverage: re-ran the full 9-operation suite with the exclusion applied (878/878 generated cases passed) and 15 additional random-seed runs at production's `--max-examples 5` (15/15 passed), rather than just re-running until the flake didn't hit.
+
 ## Future Work (Before Season Start)
 
 One telemetry event type has correct domain logic but lacks a scheduled trigger in production:
