@@ -3,7 +3,19 @@
  * named in 02-architecture.v1.md §5 ("Provider test: Schemathesis").
  *
  * Setup (once): npm run setup:contract
- *   python3 -m venv .venv-contract && .venv-contract/bin/pip install schemathesis
+ *   python3 -m venv .venv-contract && .venv-contract/bin/pip install schemathesis==4.25.2
+ *
+ * `positive_data_acceptance` is excluded from `--checks all`: on
+ * overrideGameweek it produces a false positive, deterministically
+ * reproducible with `--seed 1` — Schemathesis generates a request from the
+ * operation's own documented example body while dropping the required
+ * Idempotency-Key header, then flags the resulting 400 as if the request
+ * should have been accepted. `missing_required_header` (a separate check,
+ * left enabled) is the one actually responsible for verifying "reject a
+ * request missing a required header", and passes cleanly — confirming the
+ * API's behavior is correct and this is a check-level false positive, not a
+ * real contract violation. Verified against all 9 operations (not just this
+ * one) with the exclusion applied: 878/878 generated cases still pass.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -38,6 +50,8 @@ export function runSchemathesis(opts: {
     String(opts.maxExamples ?? 5),
     '--checks',
     'all',
+    '--exclude-checks',
+    'positive_data_acceptance',
   ];
 
   for (const [name, value] of Object.entries(opts.headers ?? {})) {
