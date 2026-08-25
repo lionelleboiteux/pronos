@@ -21,6 +21,7 @@ import { handleGameweekOverride } from './adminOverride.ts';
 import { handleSubmitPrediction, type SubmitRequest } from './submitPrediction.ts';
 import { handleSendGameweekReceipt } from './sendGameweekReceipt.ts';
 import { handleSyncFixtures } from './syncFixtures.ts';
+import { handleTick } from './tick.ts';
 import { handleSubmitFeedback } from './submitFeedback.ts';
 import { SUBMIT_RATE_LIMIT_PER_MINUTE, createRateLimiter, type RateLimiter } from './rateLimit.ts';
 
@@ -348,6 +349,24 @@ const ROUTES: Route[] = [
         return handleSyncFixtures(
           { authorization: req.headers.authorization ?? null, body: req.body },
           {
+            auth: {
+              verifyBearer: async (token) => ({ valid: token === (ctx.ingestToken ?? ctx.adminToken) }),
+            },
+            repo: ctx.repo,
+          },
+        );
+      },
+    },
+  },
+  {
+    pattern: /^\/v1\/internal\/tick$/,
+    query: [],
+    handlers: {
+      POST: async (req, ctx) => {
+        return handleTick(
+          { authorization: req.headers.authorization ?? null },
+          {
+            now: () => new Date(),
             auth: {
               verifyBearer: async (token) => ({ valid: token === (ctx.ingestToken ?? ctx.adminToken) }),
             },

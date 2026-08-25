@@ -5,6 +5,7 @@
  */
 
 import { runScoring, type ScoringRunPlayer } from '../domain/scoringRun.ts';
+import type { LeagueState } from '../domain/gameweekTransition.ts';
 import type { OverrideAction } from '../api/adminOverride.ts';
 import type { GameRecord } from '../api/submitPrediction.ts';
 import type { LeagueCurrentState } from '../api/getCurrentGameweek.ts';
@@ -709,6 +710,75 @@ export function createRepository(pool: QueryExecutor) {
         gameweek_number: gameweek.number,
         picks: picks.rows as GameweekPicks['picks'],
       };
+    },
+
+    /**
+     * Feeds `gameweekTransition.tick()` (src/api/tick.ts, the pg_cron/pg_net
+     * entry point): each league's current gameweek and its matches, plus the
+     * one next gameweek already sitting in `gameweeks` — put there by the
+     * fixture-sync pipeline ahead of time — if one exists. `tick()` only
+     * ever looks at the smallest-numbered gameweek after the current one, so
+     * fetching just that single row (rather than the rest of the season) is
+     * enough. A league with no `current_gameweek_id` (already closed with
+     * nothing to open — the bootstrap case the admin override exists for)
+     * is left out entirely rather than guessed at here.
+     */
+    async listOpenGameweekStates(): Promise<LeagueState[]> {
+      const leagues = await pool.query(
+        `select l.id as league_id, l.code as league_code,
+                gw.id as gw_id, gw.number as gw_number, gw.season_id
+           from leagues l join gameweeks gw on gw.id = l.current_gameweek_id`,
+      );
+
+      const states: LeagueState[] = [];
+      for (const row of leagues.rows) {
+        const games = await pool.query(
+          `select g.id, g.starts_at,
+                  exists(
+                    select 1 from telemetry_events te
+                     where te.event_type = 'match_locked' and te.game_id = g.id
+                  ) as lock_event_emitted
+             from games g where g.gameweek_id = $1`,
+          [row.gw_id],
+        );
+        const next = await pool.query(
+          `select id, number from gameweeks
+            where season_id = $1 and number > $2
+            order by number asc limit 1`,
+          [row.season_id, row.gw_number],
+        );
+
+        const gameweeks: LeagueState['gameweeks'] = [
+          {
+            id: row.gw_id,
+            number: row.gw_number,
+            matches: games.rows.map((g) => ({
+              id: g.id,
+              starts_at: new Date(g.starts_at),
+              lock_event_emitted: g.lock_event_emitted,
+            })),
+          },
+        ];
+        if (next.rows[0]) {
+          gameweeks.push({ id: next.rows[0].id, number: next.rows[0].number, matches: [] });
+        }
+
+        states.push({
+          league_id: row.league_id,
+          league_code: row.league_code,
+          current_gameweek_id: row.gw_id,
+          gameweeks,
+        });
+      }
+      return states;
+    },
+
+    /** Persists a tick's `gameweek_closed` outcome — see listOpenGameweekStates above. */
+    async setCurrentGameweek(league_id: string, gameweek_id: string | null): Promise<void> {
+      await pool.query(`update leagues set current_gameweek_id = $2 where id = $1`, [
+        league_id,
+        gameweek_id,
+      ]);
     },
   };
 }

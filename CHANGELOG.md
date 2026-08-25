@@ -65,27 +65,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Reviewed codebase against TypeScript standards: identified two large functions for future refactoring (no action at this gate), confirmed all injection sites, no missing security controls found.
 - Confirmed suite still 118/118, `tsc --noEmit` clean; no test assertions changed.
 
+### Gameweek Transition Cron Wiring (2026-08-25)
+
+**Diagnosed and fixed: gameweek transitions never actually ran in production.** Premier League, Ligue 1, and Serie A had every gameweek-1 match finished, well past kickoff, but were still showing gameweek 1 as open — because nothing had ever called `gameweekTransition.tick()` on a schedule, despite it being correct, unit-tested logic since the initial build.
+
+- Added `POST /v1/internal/tick` (`src/api/tick.ts`), a machine-to-machine endpoint (same trust tier as `/v1/ingest/fixtures`) that runs `tick()` against each league's current gameweek and persists the result: `match_locked` events for newly-passed kickoffs, and `gameweek_closed`/`gameweek_opened` plus the `leagues.current_gameweek_id` update once a gameweek's last match has kicked off.
+- Added `db/migrations/20260825090000_schedule_gameweek_transition_tick.sql`, scheduling that endpoint via `pg_cron`/`pg_net` every minute. Every statement is wrapped in exception-swallowing `DO` blocks so the migration stays a harmless no-op against the plain Postgres image the DB test suite runs migrations against (`pg_cron`/`pg_net`/Vault only exist on managed Supabase).
+- One manual step this migration can't do for you: the job's bearer token can't be committed to git, so `select vault.create_secret('<the INGEST_TOKEN value>', 'tick_token');` must be run once from the Supabase SQL editor before the scheduled call will authenticate.
+- Added `tests/unit/tick.test.ts` (6 tests) covering auth, event persistence, the not-yet-locked no-op case, and the "no next gameweek ingested yet" case (left `current_gameweek_id` null rather than guessed at, same as the existing manual override's behavior).
+- Corrected this changelog's and the README's "Future Work"/"Current Status" sections, which had gone stale: fixture ingestion (`scripts/ingestion/`, `.github/workflows/ingest-fixtures.yml`) was in fact already built and running hourly for all 5 leagues, contrary to the "not part of this build at all" note previously here.
+
 ## Future Work (Before Season Start)
 
-The following four telemetry event types have correct domain logic but lack the pg_cron/pg_net entry points to fire in production:
+One telemetry event type has correct domain logic but lacks a scheduled trigger in production:
 
-- `match_locked` — will be fired by a minute-interval cron job that checks for newly-locked matches
-- `gameweek_opened` — will be fired when the automatic gameweek-transition cron advances to the next gameweek
-- `gameweek_closed` — will be fired when the last match of a gameweek kicks off
 - `duplicate_flagged` — will be fired by a weekly cron job that runs the duplicate-detection scan
 
-These do not block deployment or MVP because the event *logic* is proven correct; only the *scheduler registration* remains. Only `admin_manual_intervention` directly feeds the registered "weekly admin time" success metric — but all required events must be running in production before the old spreadsheet process is retired, since the baseline itself is unmeasured and the comparison window can't be recovered later.
-
-**Fixture ingestion is not part of this build at all.** Fetching real match
-results (per-league scrapers / a fallback API) is a separate slice
-(`fixture-ingestion`) with its own red gate, never run in this repo — no
-adapter code exists under `src/`. Everything shipped here assumes `games`
-rows and their scores already exist in the database; populating them from
-real fixtures is future work, not a pending wiring step like the four events
-above.
+This does not block deployment or MVP because the event *logic* is proven correct; only the *scheduler registration* remains.
 
 ## Known Limitations
 
 - **No backups on Free tier:** Supabase Free has no daily backups or point-in-time recovery (PITR is a $100/month Pro+ add-on). Mitigated by mandatory expand-only schema migrations and manual `pg_dump` before destructive changes.
 - **Rate limit shared IP collision:** Players sharing a household/office IP are affected by the 10 req/min limit; this is a known trade-off acknowledged and accepted.
-- **Fixture ingestion doesn't exist yet:** no scraper or API adapter code is in this repo (see Future Work above) — this build only proves the game engine against `games` rows however they get populated.
+- **Weekly duplicate scan isn't scheduled yet:** the detection logic is tested but no cron job calls it in production yet (see Future Work above).
