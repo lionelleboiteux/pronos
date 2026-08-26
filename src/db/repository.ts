@@ -243,7 +243,42 @@ export function createRepository(pool: QueryExecutor) {
       );
     }
 
+    await refreshOverallStandings(gameweek.season_id);
     await insertTelemetryEvents(run.events);
+  }
+
+  /**
+   * `overall_standings` (the season-long classement `GET .../standings/overall`
+   * serves, and what the frontend's main "classement général" card reads —
+   * a separate table from `league_gameweek_standings`) had no writer anywhere
+   * in this codebase: gameweeks were scoring correctly, but the season total
+   * stayed permanently empty. Recomputed as a plain sum-and-rank over every
+   * scored gameweek in the season, refreshed each time a gameweek is scored.
+   */
+  async function refreshOverallStandings(season_id: string): Promise<void> {
+    await pool.query(
+      `insert into overall_standings
+         (player_id, season_id, points, rank, predictions_count, correct_results_count, exact_scores_count)
+       select player_id, $1, total_points, rank() over (order by total_points desc),
+              total_predictions, total_correct, total_exact
+         from (
+           select player_id,
+                  sum(points) as total_points,
+                  sum(predictions_count) as total_predictions,
+                  sum(correct_results_count) as total_correct,
+                  sum(exact_scores_count) as total_exact
+             from league_gameweek_standings
+            where season_id = $1
+            group by player_id
+         ) agg
+       on conflict (player_id, season_id) do update
+         set points = excluded.points, rank = excluded.rank,
+             predictions_count = excluded.predictions_count,
+             correct_results_count = excluded.correct_results_count,
+             exact_scores_count = excluded.exact_scores_count,
+             updated_at = now()`,
+      [season_id],
+    );
   }
 
   async function rescore(gameweek_id: string): Promise<void> {

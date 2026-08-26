@@ -99,6 +99,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Verified end-to-end against a real local Postgres (not just mocks): seeded a finished match with a prediction, called the real router's `/v1/internal/tick`, confirmed `GET .../standings` went from empty to the correct 5/3/2/0 points, and confirmed a second tick call is a clean no-op (no duplicate scoring, no error) once the gameweek is no longer current.
 - Added 2 tests to `tests/unit/tick.test.ts` (scoring runs on close; still runs even when there's no next gameweek to open yet).
 
+### Season-Long Standings Never Had a Writer (2026-08-26)
+
+**Gameweek scoring started working, and gameweek-level standings showed correct points — but the live site's main "classement général" card still showed nothing.** That card reads a completely different table: `GET .../standings/overall`, backed by `overall_standings`, not `league_gameweek_standings`. Checked the whole codebase: nothing anywhere ever wrote to `overall_standings` — it's a plain table with no trigger, no view, no refresh logic, permanently empty since the initial build.
+
+- Added `refreshOverallStandings(season_id)` to `src/db/repository.ts`: a straight sum-and-`rank()` over every `league_gameweek_standings` row in a season, upserted into `overall_standings`. Called from `computeAndPersistScoring()` — the same function both the manual admin "rescore" action and the automated tick-triggered scoring already run through — so the season total stays in sync with per-gameweek scoring automatically, no separate cron entry point needed.
+- Added `tests/db/overallStandings.test.ts` (3 tests: populated on first score, sums correctly across multiple gameweeks in a season, idempotent on a repeated call) — verified passing against a real local Postgres.
+
 ## Future Work (Before Season Start)
 
 One telemetry event type has correct domain logic but lacks a scheduled trigger in production:
