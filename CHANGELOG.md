@@ -90,6 +90,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - `npm run setup:contract` now pins `schemathesis==4.25.2` instead of installing unpinned-`latest` — this project already hit the same failure mode once with `supabase/setup-cli@v1` (see v1.0.2), and unpinned tooling is what let this behavior surface without any change to this repo's own code.
 - `tests/support/schemathesis.ts` now passes `--exclude-checks positive_data_acceptance`. Verified narrow and safe, not masking real coverage: re-ran the full 9-operation suite with the exclusion applied (878/878 generated cases passed) and 15 additional random-seed runs at production's `--max-examples 5` (15/15 passed), rather than just re-running until the flake didn't hit.
 
+### Automated Post-Close Scoring (2026-08-26)
+
+**Once gameweeks actually started advancing in production, gameweek 1's points still weren't showing.** Same shape of gap as the cron wiring above, one step further down the pipeline: `runScoring()` (the 5/3/2/0 scoring engine) has existed as correct, tested logic since the initial build, but was only ever wired to the manual admin "rescore" action — nothing ran it automatically when a gameweek closed, so a closed gameweek's classement stayed empty (`GET .../standings` returning `data: []`) until an operator rescored it by hand.
+
+- `src/db/repository.ts`: extracted the compute-and-persist-standings logic shared by the admin "rescore" action and the new automated path into `computeAndPersistScoring()`. Added `runScoringForGameweek(gameweek_id, now)`, which checks `already_completed` for real against `telemetry_events` (unlike the always-force manual action) so an overlapping or retried cron tick can't double-score the same gameweek.
+- `src/api/tick.ts`: `handleTick()` now calls `runScoringForGameweek` for every gameweek that closes this tick, before advancing `leagues.current_gameweek_id` — no separate migration or deploy step needed beyond what `20260825090000_schedule_gameweek_transition_tick.sql` already schedules, since this runs inside the same `POST /v1/internal/tick` call.
+- Verified end-to-end against a real local Postgres (not just mocks): seeded a finished match with a prediction, called the real router's `/v1/internal/tick`, confirmed `GET .../standings` went from empty to the correct 5/3/2/0 points, and confirmed a second tick call is a clean no-op (no duplicate scoring, no error) once the gameweek is no longer current.
+- Added 2 tests to `tests/unit/tick.test.ts` (scoring runs on close; still runs even when there's no next gameweek to open yet).
+
 ## Future Work (Before Season Start)
 
 One telemetry event type has correct domain logic but lacks a scheduled trigger in production:

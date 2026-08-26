@@ -31,9 +31,15 @@ function buildDeps(opts: {
   now: Date;
   leagues: LeagueState[];
   tokenValid?: boolean;
-}): { deps: TickDeps; inserted: unknown[]; currentGameweekWrites: Array<{ league_id: string; gameweek_id: string | null }> } {
+}): {
+  deps: TickDeps;
+  inserted: unknown[];
+  currentGameweekWrites: Array<{ league_id: string; gameweek_id: string | null }>;
+  scoringRuns: string[];
+} {
   const inserted: unknown[] = [];
   const currentGameweekWrites: Array<{ league_id: string; gameweek_id: string | null }> = [];
+  const scoringRuns: string[] = [];
   const deps: TickDeps = {
     now: () => opts.now,
     auth: { verifyBearer: async () => ({ valid: opts.tokenValid ?? true }) },
@@ -43,9 +49,12 @@ function buildDeps(opts: {
       setCurrentGameweek: async (league_id, gameweek_id) => {
         currentGameweekWrites.push({ league_id, gameweek_id });
       },
+      runScoringForGameweek: async (gameweek_id) => {
+        scoringRuns.push(gameweek_id);
+      },
     },
   };
-  return { deps, inserted, currentGameweekWrites };
+  return { deps, inserted, currentGameweekWrites, scoringRuns };
 }
 
 describe('POST /v1/internal/tick', () => {
@@ -61,12 +70,40 @@ describe('POST /v1/internal/tick', () => {
   });
 
   it('does nothing to a league whose current gameweek has not fully kicked off yet', async () => {
-    const { deps, inserted, currentGameweekWrites } = buildDeps({ now: BEFORE, leagues: [leagueOpenOnGw1()] });
+    const { deps, inserted, currentGameweekWrites, scoringRuns } = buildDeps({
+      now: BEFORE,
+      leagues: [leagueOpenOnGw1()],
+    });
 
     await handleTick({ authorization: 'Bearer valid' }, deps);
 
     expect(inserted).toHaveLength(0);
     expect(currentGameweekWrites).toHaveLength(0);
+    expect(scoringRuns).toHaveLength(0);
+  });
+
+  it('runs scoring for a gameweek once it closes', async () => {
+    const { deps, scoringRuns } = buildDeps({ now: AFTER, leagues: [leagueOpenOnGw1()] });
+
+    await handleTick({ authorization: 'Bearer valid' }, deps);
+
+    expect(scoringRuns).toEqual(['gw1']);
+  });
+
+  it('still runs scoring for a closed gameweek even when there is no next gameweek to open', async () => {
+    const noNextYet: LeagueState = {
+      league_id: 'league-bl1',
+      league_code: 'BL1',
+      current_gameweek_id: 'gw1',
+      gameweeks: [
+        { id: 'gw1', number: 1, matches: [{ id: 'game1', starts_at: LAST_KICKOFF, lock_event_emitted: false }] },
+      ],
+    };
+    const { deps, scoringRuns } = buildDeps({ now: AFTER, leagues: [noNextYet] });
+
+    await handleTick({ authorization: 'Bearer valid' }, deps);
+
+    expect(scoringRuns).toEqual(['gw1']);
   });
 
   it('closes the current gameweek and opens the next one once the last kickoff has passed', async () => {
