@@ -157,7 +157,18 @@ const toFlag = (row: FlagQueryRow): DuplicateFlagRow => ({
 });
 
 export function createRepository(pool: QueryExecutor) {
-  async function rescore(gameweek_id: string): Promise<void> {
+  /**
+   * Computes and persists one gameweek's classement — shared by the manual
+   * admin "rescore" action (always forces a recompute) and the automated
+   * post-close scoring run (src/api/tick.ts), which passes a real
+   * `already_completed` flag so a retried/overlapping cron tick can't
+   * double-run it (runScoring's own no-op guard, scoringRun.ts).
+   */
+  async function computeAndPersistScoring(
+    gameweek_id: string,
+    now: Date,
+    already_completed: boolean,
+  ): Promise<void> {
     const gw = await pool.query(
       `select gw.league_id, gw.season_id, coalesce(max(g.starts_at), gw.starts_at) as last_kickoff_at
          from gameweeks gw left join games g on g.gameweek_id = gw.id
@@ -197,13 +208,14 @@ export function createRepository(pool: QueryExecutor) {
     }
 
     const run = runScoring({
-      now: new Date(),
+      now,
       league_id: gameweek.league_id,
       gameweek_id,
       last_kickoff_at: gameweek.last_kickoff_at,
-      already_completed: false,
+      already_completed,
       players: [...byPlayer.values()],
     });
+    if (!run.ran) return;
 
     for (const row of run.standings) {
       await pool.query(
@@ -232,6 +244,10 @@ export function createRepository(pool: QueryExecutor) {
     }
 
     await insertTelemetryEvents(run.events);
+  }
+
+  async function rescore(gameweek_id: string): Promise<void> {
+    await computeAndPersistScoring(gameweek_id, new Date(), false);
   }
 
   async function insertTelemetryEvents(events: TelemetryEvent[]): Promise<void> {
@@ -779,6 +795,24 @@ export function createRepository(pool: QueryExecutor) {
         league_id,
         gameweek_id,
       ]);
+    },
+
+    /**
+     * The automated counterpart to the admin "rescore" action: called once
+     * per tick for each gameweek that just closed (src/api/tick.ts). Checks
+     * `already_completed` for real (unlike the always-force manual action),
+     * so an overlapping or retried cron tick can't score the same gameweek
+     * twice.
+     */
+    async runScoringForGameweek(gameweek_id: string, now: Date): Promise<void> {
+      const already = await pool.query(
+        `select exists(
+           select 1 from telemetry_events
+            where event_type = 'scoring_run_completed' and gameweek_id = $1
+         ) as done`,
+        [gameweek_id],
+      );
+      await computeAndPersistScoring(gameweek_id, now, already.rows[0].done);
     },
   };
 }

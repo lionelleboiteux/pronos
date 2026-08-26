@@ -6,6 +6,13 @@
  * a league's current gameweek never actually closed or advanced no matter
  * how long ago its last match kicked off (see README "Current Status").
  *
+ * Also runs the scoring engine for any gameweek that closes this tick — the
+ * same gap as above, one step further down the pipeline: `runScoring()` has
+ * existed as tested logic since the initial build, but was only ever wired
+ * to the manual admin "rescore" action, never to an automatic post-close
+ * trigger, so a closed gameweek's classement stayed empty until an operator
+ * rescored it by hand.
+ *
  * Same trust tier as /v1/ingest/fixtures: a machine-to-machine credential
  * held by the scheduled caller (here, a secret in Supabase Vault that the
  * pg_cron job reads to set its Authorization header), not a human
@@ -27,6 +34,8 @@ export type TickDeps = {
     listOpenGameweekStates(): Promise<LeagueState[]>;
     insertTelemetryEvents(events: TickResult['events']): Promise<void>;
     setCurrentGameweek(league_id: string, gameweek_id: string | null): Promise<void>;
+    /** No-ops if this gameweek already has a scoring_run_completed event. */
+    runScoringForGameweek(gameweek_id: string, now: Date): Promise<void>;
   };
 };
 
@@ -46,6 +55,14 @@ export async function handleTick(req: TickRequest, deps: TickDeps): Promise<ApiR
   const result = tick(now, before);
 
   await deps.repo.insertTelemetryEvents(result.events);
+
+  const closedGameweekIds = result.events
+    .filter((e) => e.event_type === 'gameweek_closed')
+    .map((e) => e.gameweek_id)
+    .filter((id): id is string => id !== null);
+  for (const gameweek_id of closedGameweekIds) {
+    await deps.repo.runScoringForGameweek(gameweek_id, now);
+  }
 
   // Only leagues whose current gameweek actually closed this tick need their
   // `leagues.current_gameweek_id` written back — everyone else (still open,
