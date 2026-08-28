@@ -21,8 +21,13 @@ function leagueOpenOnGw1(): LeagueState {
     league_code: 'PL',
     current_gameweek_id: 'gw1',
     gameweeks: [
-      { id: 'gw1', number: 1, matches: [{ id: 'game1', starts_at: LAST_KICKOFF, lock_event_emitted: false }] },
-      { id: 'gw2', number: 2, matches: [] },
+      {
+        id: 'gw1',
+        number: 1,
+        matches: [{ id: 'game1', starts_at: LAST_KICKOFF, lock_event_emitted: false }],
+        closed_event_emitted: false,
+      },
+      { id: 'gw2', number: 2, matches: [], closed_event_emitted: false },
     ],
   };
 }
@@ -96,7 +101,12 @@ describe('POST /v1/internal/tick', () => {
       league_code: 'BL1',
       current_gameweek_id: 'gw1',
       gameweeks: [
-        { id: 'gw1', number: 1, matches: [{ id: 'game1', starts_at: LAST_KICKOFF, lock_event_emitted: false }] },
+        {
+          id: 'gw1',
+          number: 1,
+          matches: [{ id: 'game1', starts_at: LAST_KICKOFF, lock_event_emitted: false }],
+          closed_event_emitted: false,
+        },
       ],
     };
     const { deps, scoringRuns } = buildDeps({ now: AFTER, leagues: [noNextYet] });
@@ -126,20 +136,81 @@ describe('POST /v1/internal/tick', () => {
     );
   });
 
-  it('leaves a league with no next gameweek on record with a null current gameweek, rather than guessing one', async () => {
+  it('holds a league with no next gameweek on record on its closed gameweek, rather than dropping to null', async () => {
+    // Nulling current_gameweek_id here would drop this league out of every
+    // future tick (listOpenGameweekStates only ever looks leagues up by
+    // current_gameweek_id) with no way back in — this is the bug behind the
+    // La Liga GW3 stall: once null, the fixture sync's own "what gameweek is
+    // open" check also comes back empty, so it can never discover the real
+    // next gameweek to ingest either.
     const noNextYet: LeagueState = {
       league_id: 'league-bl1',
       league_code: 'BL1',
       current_gameweek_id: 'gw1',
       gameweeks: [
-        { id: 'gw1', number: 1, matches: [{ id: 'game1', starts_at: LAST_KICKOFF, lock_event_emitted: false }] },
+        {
+          id: 'gw1',
+          number: 1,
+          matches: [{ id: 'game1', starts_at: LAST_KICKOFF, lock_event_emitted: false }],
+          closed_event_emitted: false,
+        },
       ],
     };
     const { deps, currentGameweekWrites } = buildDeps({ now: AFTER, leagues: [noNextYet] });
 
     await handleTick({ authorization: 'Bearer valid' }, deps);
 
-    expect(currentGameweekWrites).toEqual([{ league_id: 'league-bl1', gameweek_id: null }]);
+    expect(currentGameweekWrites).toEqual([{ league_id: 'league-bl1', gameweek_id: 'gw1' }]);
+  });
+
+  it('does not write back or re-emit gameweek_closed on a later tick while still waiting for the next gameweek', async () => {
+    const stillWaiting: LeagueState = {
+      league_id: 'league-bl1',
+      league_code: 'BL1',
+      current_gameweek_id: 'gw1',
+      gameweeks: [
+        {
+          id: 'gw1',
+          number: 1,
+          matches: [{ id: 'game1', starts_at: LAST_KICKOFF, lock_event_emitted: true }],
+          closed_event_emitted: true,
+        },
+      ],
+    };
+    const { deps, currentGameweekWrites, inserted } = buildDeps({
+      now: new Date(AFTER.getTime() + 60_000),
+      leagues: [stillWaiting],
+    });
+
+    await handleTick({ authorization: 'Bearer valid' }, deps);
+
+    expect(currentGameweekWrites).toHaveLength(0);
+    expect(inserted).toHaveLength(0);
+  });
+
+  it('writes back current_gameweek_id once the next gameweek is finally ingested, on a tick with no gameweek_closed event', async () => {
+    const nextNowExists: LeagueState = {
+      league_id: 'league-bl1',
+      league_code: 'BL1',
+      current_gameweek_id: 'gw1',
+      gameweeks: [
+        {
+          id: 'gw1',
+          number: 1,
+          matches: [{ id: 'game1', starts_at: LAST_KICKOFF, lock_event_emitted: true }],
+          closed_event_emitted: true,
+        },
+        { id: 'gw2', number: 2, matches: [], closed_event_emitted: false },
+      ],
+    };
+    const { deps, currentGameweekWrites } = buildDeps({
+      now: new Date(AFTER.getTime() + 60_000),
+      leagues: [nextNowExists],
+    });
+
+    await handleTick({ authorization: 'Bearer valid' }, deps);
+
+    expect(currentGameweekWrites).toEqual([{ league_id: 'league-bl1', gameweek_id: 'gw2' }]);
   });
 
   it('leaves other leagues untouched when only one of them transitions', async () => {
@@ -152,6 +223,7 @@ describe('POST /v1/internal/tick', () => {
           id: 'gw1-sa',
           number: 1,
           matches: [{ id: 'game-sa', starts_at: t('2026-08-18T20:00:00Z'), lock_event_emitted: false }],
+          closed_event_emitted: false,
         },
       ],
     };

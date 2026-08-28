@@ -770,9 +770,12 @@ export function createRepository(pool: QueryExecutor) {
      * fixture-sync pipeline ahead of time — if one exists. `tick()` only
      * ever looks at the smallest-numbered gameweek after the current one, so
      * fetching just that single row (rather than the rest of the season) is
-     * enough. A league with no `current_gameweek_id` (already closed with
-     * nothing to open — the bootstrap case the admin override exists for)
-     * is left out entirely rather than guessed at here.
+     * enough. A league with no `current_gameweek_id` (never opened yet — the
+     * bootstrap case the admin override exists for) is left out entirely
+     * rather than guessed at here. `tick()` itself keeps `current_gameweek_id`
+     * pointing at a closed gameweek until its successor's row exists, so a
+     * league never reaches that null state merely because the fixture sync
+     * hasn't caught up yet.
      */
     async listOpenGameweekStates(): Promise<LeagueState[]> {
       const leagues = await pool.query(
@@ -792,6 +795,13 @@ export function createRepository(pool: QueryExecutor) {
              from games g where g.gameweek_id = $1`,
           [row.gw_id],
         );
+        const closed = await pool.query(
+          `select exists(
+             select 1 from telemetry_events te
+              where te.event_type = 'gameweek_closed' and te.gameweek_id = $1
+           ) as closed_event_emitted`,
+          [row.gw_id],
+        );
         const next = await pool.query(
           `select id, number from gameweeks
             where season_id = $1 and number > $2
@@ -808,10 +818,16 @@ export function createRepository(pool: QueryExecutor) {
               starts_at: new Date(g.starts_at),
               lock_event_emitted: g.lock_event_emitted,
             })),
+            closed_event_emitted: closed.rows[0].closed_event_emitted,
           },
         ];
         if (next.rows[0]) {
-          gameweeks.push({ id: next.rows[0].id, number: next.rows[0].number, matches: [] });
+          gameweeks.push({
+            id: next.rows[0].id,
+            number: next.rows[0].number,
+            matches: [],
+            closed_event_emitted: false,
+          });
         }
 
         states.push({

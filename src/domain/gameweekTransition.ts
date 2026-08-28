@@ -20,6 +20,12 @@ export type GameweekState = {
   id: string;
   number: number;
   matches: MatchState[];
+  /**
+   * Guards against re-emitting gameweek_closed on every tick while this
+   * gameweek sits locked with no successor row yet (fixtures for the next
+   * gameweek haven't been ingested). Mirrors MatchState.lock_event_emitted.
+   */
+  closed_event_emitted: boolean;
 };
 
 export type LeagueState = {
@@ -76,32 +82,48 @@ function advanceLeague(now: Date, league: LeagueState): { league: LeagueState; e
     return { league: { ...league, gameweeks }, events };
   }
 
-  events.push(
-    buildTelemetryEvent('gameweek_closed', {
-      league: league.league_code,
-      gameweek: current.number,
-      closed_at: occurred_at,
-      league_id: league.league_id,
-      gameweek_id: current.id,
-      occurred_at,
-    }),
-  );
-
-  const next = nextGameweekAfter(league, current);
-  if (next) {
+  if (!current.closed_event_emitted) {
     events.push(
-      buildTelemetryEvent('gameweek_opened', {
+      buildTelemetryEvent('gameweek_closed', {
         league: league.league_code,
-        gameweek: next.number,
-        opened_at: occurred_at,
+        gameweek: current.number,
+        closed_at: occurred_at,
         league_id: league.league_id,
-        gameweek_id: next.id,
+        gameweek_id: current.id,
         occurred_at,
       }),
     );
   }
 
-  return { league: { ...league, gameweeks, current_gameweek_id: next?.id ?? null }, events };
+  const next = nextGameweekAfter(league, current);
+  if (!next) {
+    // The next gameweek's fixtures haven't been ingested yet — stay put
+    // rather than dropping current_gameweek_id to null. Nulling it here
+    // would drop this league out of every future tick (it's only ever
+    // looked up by current_gameweek_id) with no way back in: the fixture
+    // sync also derives its target gameweek number from this same "current"
+    // state, so once it goes null the pipeline can never discover the real
+    // next gameweek to ingest either. Staying on the closed gameweek keeps
+    // both sides of the pipeline talking until the next gameweek's row
+    // shows up, at which point the branch below takes over.
+    const closedGameweeks = gameweeks.map((gw) =>
+      gw.id === current.id ? { ...gw, closed_event_emitted: true } : gw,
+    );
+    return { league: { ...league, gameweeks: closedGameweeks, current_gameweek_id: current.id }, events };
+  }
+
+  events.push(
+    buildTelemetryEvent('gameweek_opened', {
+      league: league.league_code,
+      gameweek: next.number,
+      opened_at: occurred_at,
+      league_id: league.league_id,
+      gameweek_id: next.id,
+      occurred_at,
+    }),
+  );
+
+  return { league: { ...league, gameweeks, current_gameweek_id: next.id }, events };
 }
 
 export function tick(now: Date, leagues: LeagueState[]): TickResult {
