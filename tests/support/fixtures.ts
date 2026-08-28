@@ -46,7 +46,8 @@ export const gameweek = (
   id: string,
   number: number,
   matches: MatchState[],
-): GameweekState => ({ id, number, matches });
+  closed_event_emitted = false,
+): GameweekState => ({ id, number, matches, closed_event_emitted });
 
 /**
  * One league with gameweek 15 open and gameweek 16 waiting behind it.
@@ -75,6 +76,35 @@ export function leagueWithGw15Open(
 
 export function threeLeaguesWithGw15Open(): LeagueState[] {
   return THE_THREE_LEAGUES.map((l) => leagueWithGw15Open(l.id, l.code));
+}
+
+/**
+ * Gameweek 15 open with no gameweek 16 row yet — the fixture-sync pipeline
+ * hasn't ingested it. Reproduces the race behind the La Liga GW3 stall: the
+ * tick fires (every minute) before the hourly fixture sync creates the next
+ * gameweek's row.
+ */
+export function leagueWithGw15OpenNoNextGameweek(
+  league_id: string,
+  league_code: string,
+  closed_event_emitted = false,
+): LeagueState {
+  return {
+    league_id,
+    league_code,
+    current_gameweek_id: `${league_code}-gw15`,
+    gameweeks: [
+      gameweek(
+        `${league_code}-gw15`,
+        15,
+        [
+          match(`${league_code}-gw15-m1`, t('2026-08-09T18:45:00Z'), true),
+          match(`${league_code}-gw15-m2`, GW15_LAST_KICKOFF, true),
+        ],
+        closed_event_emitted,
+      ),
+    ],
+  };
 }
 
 export const gameRecord = (overrides: Partial<GameRecord> = {}): GameRecord => ({

@@ -178,6 +178,7 @@ export type GameweekState = {
   id: string;
   number: number;
   matches: MatchState[];
+  closed_event_emitted: boolean;
 };
 
 export type LeagueState = {

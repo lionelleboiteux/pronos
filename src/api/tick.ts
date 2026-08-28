@@ -64,17 +64,23 @@ export async function handleTick(req: TickRequest, deps: TickDeps): Promise<ApiR
     await deps.repo.runScoringForGameweek(gameweek_id, now);
   }
 
-  // Only leagues whose current gameweek actually closed this tick need their
-  // `leagues.current_gameweek_id` written back — everyone else (still open,
-  // or with no current gameweek to begin with) is untouched, so a league
-  // stuck for lack of a next-gameweek row (no ingested fixtures yet) is left
-  // exactly as `applyAction`'s manual 'close' path already leaves it, not
-  // silently reset.
-  const closedLeagueIds = new Set(
-    result.events.filter((e) => e.event_type === 'gameweek_closed').map((e) => e.league_id),
+  // Only leagues whose current_gameweek_id actually moved this tick need it
+  // written back — everyone else (still open, or with no current gameweek to
+  // begin with) is untouched. A gameweek can close without opening a
+  // successor (its next gameweek's fixtures haven't been ingested yet —
+  // gameweekTransition.tick() then holds current_gameweek_id on the closed
+  // gameweek rather than nulling it, so the league stays reachable on future
+  // ticks); that still needs writing back the first time it happens, and the
+  // eventual transition to the next gameweek — once its row exists — arrives
+  // as a gameweek_opened event with no accompanying gameweek_closed, since
+  // it was already emitted on the tick that closed it.
+  const changedLeagueIds = new Set(
+    result.events
+      .filter((e) => e.event_type === 'gameweek_closed' || e.event_type === 'gameweek_opened')
+      .map((e) => e.league_id),
   );
   for (const league of result.leagues) {
-    if (closedLeagueIds.has(league.league_id)) {
+    if (changedLeagueIds.has(league.league_id)) {
       await deps.repo.setCurrentGameweek(league.league_id, league.current_gameweek_id);
     }
   }
