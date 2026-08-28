@@ -589,7 +589,7 @@
       return card;
     }
 
-    apiFetch('/v1/leagues/' + league.id + '/seasons/' + season_id + '/standings/overall?per_page=15', {})
+    apiFetchAllPages('/v1/leagues/' + league.id + '/seasons/' + season_id + '/standings/overall')
       .then(function (res) {
         body.innerHTML = '';
         var rows = (res.status === 200 && res.body.data) || [];
@@ -783,6 +783,30 @@
   function apiFetch(path, opts) {
     return fetch(API_BASE + path, opts).then(function (r) {
       return r.json().then(function (body) { return { status: r.status, body: body }; });
+    });
+  }
+
+  /**
+   * Fetches every page of a paginated GET endpoint and resolves with the
+   * concatenated `data` rows, in order. `path` must not already carry a
+   * `page` query param; `per_page` defaults to 100 (the API's max) so most
+   * standings fit in one request.
+   */
+  function apiFetchAllPages(path, perPage) {
+    var sep = path.indexOf('?') === -1 ? '?' : '&';
+    var withPage = function (page) { return path + sep + 'per_page=' + (perPage || 100) + '&page=' + page; };
+    return apiFetch(withPage(1)).then(function (first) {
+      if (first.status !== 200) return first;
+      var pagination = first.body.pagination;
+      var totalPages = pagination ? pagination.total_pages : 1;
+      if (totalPages <= 1) return first;
+      var rest = [];
+      for (var page = 2; page <= totalPages; page++) rest.push(page);
+      return Promise.all(rest.map(function (page) { return apiFetch(withPage(page)); })).then(function (results) {
+        var data = first.body.data.slice();
+        results.forEach(function (res) { if (res.status === 200) data = data.concat(res.body.data); });
+        return { status: first.status, body: Object.assign({}, first.body, { data: data }) };
+      });
     });
   }
 
