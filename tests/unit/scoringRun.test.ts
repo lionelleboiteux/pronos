@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { loadScoringRun } from '../support/seams.js';
 import type { ScoringRunInput } from '../support/seams.js';
-import { GAMEWEEK_15, GW15_LAST_KICKOFF, LEAGUE_PREMIER_LEAGUE, t } from '../support/fixtures.js';
+import { GAMEWEEK_15, LEAGUE_PREMIER_LEAGUE, t } from '../support/fixtures.js';
 
 /**
  * Morning-after scoring run (AC-08, AC-14). `now` is injected, matching the
@@ -14,7 +14,7 @@ const baseInput = (overrides: Partial<ScoringRunInput> = {}): ScoringRunInput =>
   now: MORNING_AFTER,
   league_id: LEAGUE_PREMIER_LEAGUE,
   gameweek_id: GAMEWEEK_15,
-  last_kickoff_at: GW15_LAST_KICKOFF,
+  all_games_finished: true,
   already_completed: false,
   players: [
     {
@@ -68,6 +68,23 @@ describe('morning-after scoring run', () => {
       ran: true,
       standings: [],
       players_scored_count: 0,
+    });
+  });
+
+  it('does not run while any of the gameweek’s matches are still unfinished, even though predictions already locked at kickoff', async () => {
+    // Predictions lock the instant the last match kicks off (lock.ts), but a
+    // match can run for ~2 hours after that before a final score exists —
+    // scoring against kickoff time alone (the old gate) would compute
+    // against placeholder data. Confirmed live: a Bundesliga gameweek scored
+    // 11 points from data captured minutes after kickoff, when the correct
+    // total once the match actually finished was 13.
+    const run = await loadScoringRun();
+
+    const out = run.runScoring(baseInput({ all_games_finished: false }));
+
+    expect({ ran: out.ran, skipped_reason: out.skipped_reason }).toEqual({
+      ran: false,
+      skipped_reason: 'gameweek_not_finished',
     });
   });
 });

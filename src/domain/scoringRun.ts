@@ -3,10 +3,18 @@
  * finished gameweek into a classement. `now` is injected, and the run is a
  * no-op once its scoring_run_completed event already exists, so a retried
  * cron tick cannot update the classement twice.
+ *
+ * Readiness is `all_games_finished`, not kickoff time: a gameweek closes to
+ * new predictions the instant its last match kicks off (see lock.ts), but a
+ * match can run for ~2 hours after that before a final score exists. Scoring
+ * against kickoff time alone would compute against whatever placeholder
+ * result happened to be in the database at that instant — the caller
+ * (repository.ts) is responsible for checking every game's status is
+ * actually 'finished' before calling this with `all_games_finished: true`,
+ * and for retrying on a later tick if it isn't yet (src/api/tick.ts).
  */
 
 import { scoreGameweek, type MatchScoringInput } from './scoring.ts';
-import { isLocked } from './lock.ts';
 import { buildTelemetryEvent, type TelemetryEvent } from '../telemetry/events.ts';
 
 export type ScoringRunPlayer = {
@@ -19,8 +27,8 @@ export type ScoringRunInput = {
   now: Date;
   league_id: string;
   gameweek_id: string;
-  /** Kickoff of the gameweek's last scheduled match. */
-  last_kickoff_at: Date;
+  /** True once every game in the gameweek has a final result (games.status = 'finished'). */
+  all_games_finished: boolean;
   /** True when a scoring_run_completed event already exists for this gameweek. */
   already_completed: boolean;
   players: ScoringRunPlayer[];
@@ -70,7 +78,7 @@ function rank(
 
 export function runScoring(input: ScoringRunInput): ScoringRunOutput {
   if (input.already_completed) return skipped('already_completed');
-  if (!isLocked(input.now, input.last_kickoff_at)) return skipped('gameweek_not_finished');
+  if (!input.all_games_finished) return skipped('gameweek_not_finished');
 
   const standings = rank(
     input.players.map((player) => {

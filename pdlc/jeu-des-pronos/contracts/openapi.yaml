@@ -693,7 +693,10 @@ paths:
           (recomputes `prediction_scores` and the standings tables that
           depend on it). Requires this gameweek's last match to have
           already kicked off (i.e. it is closed in the kickoff-time sense);
-          otherwise `409 CONFLICT`.
+          otherwise `409 CONFLICT`. Accepted (`200`) but a no-op
+          (`applied: false`) if any of this gameweek's matches don't have a
+          final result yet — kickoff passing doesn't mean the match is over,
+          so there is nothing to compute yet; retry once results are in.
 
         **This endpoint's own successful use is itself one of the things
         the project measures.** Every call that actually changes state

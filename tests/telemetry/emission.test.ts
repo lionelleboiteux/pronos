@@ -54,7 +54,7 @@ const scoringInput = (overrides: Partial<ScoringRunInput> = {}): ScoringRunInput
   now: t('2026-08-12T06:00:00Z'),
   league_id: LEAGUE_LIGUE_1,
   gameweek_id: GAMEWEEK_15,
-  last_kickoff_at: GW15_LAST_KICKOFF,
+  all_games_finished: true,
   already_completed: false,
   players: [
     {
