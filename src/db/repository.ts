@@ -59,6 +59,20 @@ export type StandingsPage = {
 };
 
 /**
+ * `getOverallStandings`'s response — the season total plus, per NFR from the
+ * old spreadsheet-era site, each player's score broken down by gameweek.
+ * `gameweeks` is the up-to-10 most recently *scored* gameweeks (oldest
+ * first); every row's `gameweek_points` is index-aligned to it, with null
+ * where that player has no league_gameweek_standings row for that gameweek
+ * (not scored yet, or no prediction that week).
+ */
+export type OverallStandingsPage = {
+  gameweeks: Array<{ gameweek_id: string; number: number }>;
+  rows: Array<StandingsPage['rows'][number] & { gameweek_points: Array<number | null> }>;
+  total_items: number;
+};
+
+/**
  * "European table" — one pseudo's points summed across every league for a
  * given calendar week (leagues have no shared gameweek numbering, so the ISO
  * week of each league_gameweek_standings row's gameweek is the only key that
@@ -547,18 +561,54 @@ export function createRepository(pool: QueryExecutor) {
       return toStandingsPage(res.rows);
     },
 
-    async getOverallStandings(season_id: string, q: StandingsQuery): Promise<StandingsPage> {
+    async getOverallStandings(season_id: string, q: StandingsQuery): Promise<OverallStandingsPage> {
+      const gwRes = await pool.query(
+        `select gw.id, gw.number
+           from gameweeks gw
+          where gw.season_id = $1
+            and exists (
+              select 1 from league_gameweek_standings lgs
+               where lgs.gameweek_id = gw.id and lgs.season_id = $1
+            )
+          order by gw.number desc
+          limit 10`,
+        [season_id],
+      );
+      const gameweeks = gwRes.rows
+        .map((r) => ({ gameweek_id: r.id as string, number: r.number as number }))
+        .sort((a, b) => a.number - b.number);
+
       const res = await pool.query(
         `select s.player_id, p.pseudo, s.points, s.rank, s.predictions_count,
                 s.correct_results_count, s.exact_scores_count,
-                (count(*) over ())::int as total_items
+                (count(*) over ())::int as total_items,
+                coalesce(
+                  (select jsonb_object_agg(lgs.gameweek_id, lgs.points)
+                     from league_gameweek_standings lgs
+                    where lgs.player_id = s.player_id and lgs.season_id = s.season_id),
+                  '{}'::jsonb
+                ) as points_by_gameweek
            from overall_standings s join players p on p.id = s.player_id
           where s.season_id = $1
           order by s.rank nulls last, p.pseudo
           limit $2 offset $3`,
         [season_id, q.per_page, offsetOf(q)],
       );
-      return toStandingsPage(res.rows);
+
+      const rows = res.rows.map(({ total_items, points_by_gameweek, ...entry }) => {
+        void total_items;
+        const map = points_by_gameweek as Record<string, number>;
+        return {
+          ...(entry as StandingsPage['rows'][number]),
+          gameweek_points: gameweeks.map((gw) => map[gw.gameweek_id] ?? null),
+        };
+      });
+
+      return {
+        gameweeks,
+        rows,
+        total_items: (res.rows[0]?.total_items as number | undefined) ?? 0,
+      };
     },
 
     /**

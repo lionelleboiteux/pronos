@@ -470,6 +470,11 @@ paths:
               example:
                 league_id: 3f29b6d2-8b1a-4e2b-9c3a-111111111111
                 season_id: 8a9c6f10-1111-4a2b-9c3d-444444444444
+                gameweeks:
+                  - gameweek_id: 5b5b5b5b-0000-4a2b-9c3d-eeeeeeeeeeee
+                    number: 1
+                  - gameweek_id: 6c6c6c6c-0000-4a2b-9c3d-ffffffffffff
+                    number: 2
                 data:
                   - player_id: c2c2c2c2-0000-4a2b-9c3d-dddddddddddd
                     pseudo: Lio_92
@@ -478,6 +483,7 @@ paths:
                     predictions_count: 15
                     correct_results_count: 10
                     exact_scores_count: 5
+                    gameweek_points: [28, 35]
                 pagination:
                   page: 1
                   per_page: 20
@@ -1371,7 +1377,7 @@ components:
 
     OverallStandingsResponse:
       type: object
-      required: [league_id, season_id, data, pagination]
+      required: [league_id, season_id, gameweeks, data, pagination]
       properties:
         league_id:
           type: string
@@ -1379,12 +1385,49 @@ components:
         season_id:
           type: string
           format: uuid
+        gameweeks:
+          type: array
+          description: >-
+            The season's most recent scored gameweeks (oldest first, capped at
+            10), matching the order and length of every row's
+            `gameweek_points`.
+          items:
+            $ref: '#/components/schemas/GameweekSummary'
         data:
           type: array
           items:
-            $ref: '#/components/schemas/StandingsEntry'
+            $ref: '#/components/schemas/OverallStandingsEntry'
         pagination:
           $ref: '#/components/schemas/Pagination'
+
+    GameweekSummary:
+      type: object
+      required: [gameweek_id, number]
+      properties:
+        gameweek_id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          minimum: 1
+
+    OverallStandingsEntry:
+      allOf:
+        - $ref: '#/components/schemas/StandingsEntry'
+        - type: object
+          required: [gameweek_points]
+          properties:
+            gameweek_points:
+              type: array
+              description: >-
+                One entry per gameweek in the response's top-level
+                `gameweeks` list, same order. null means this player has no
+                standing for that gameweek (not scored yet, or they made no
+                prediction that week).
+              items:
+                oneOf:
+                  - type: integer
+                  - type: 'null'
 
     CrossLeagueStandingsEntry:
       type: object

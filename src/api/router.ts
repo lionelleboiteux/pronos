@@ -235,6 +235,7 @@ const ROUTES: Route[] = [
           body: {
             league_id: ids.data[0],
             season_id: ids.data[1],
+            gameweeks: found.gameweeks,
             data: found.rows,
             pagination: paginationOut(found.total_items, q),
           },
