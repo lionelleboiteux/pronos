@@ -10,6 +10,11 @@ import { seedLeague, seedPlayer, insertPrediction, startTestDatabase, type TestD
  * gameweeks scored correctly but the season total stayed permanently empty.
  * Exercised here via `runScoringForGameweek` — the same call
  * `src/api/tick.ts` makes on every automatic gameweek close.
+ *
+ * `getOverallStandings` itself is also covered here: beyond the season
+ * total, it returns the up-to-10 most recently scored gameweeks and each
+ * player's points broken down per gameweek — the per-gameweek columns the
+ * old spreadsheet-era site's "Classement général" showed alongside the total.
  */
 
 let started: TestDatabase | null = null;
@@ -49,6 +54,8 @@ describe('overall_standings refresh', () => {
     expect(page.rows).toEqual(
       expect.arrayContaining([expect.objectContaining({ pseudo: 'OverallPlayer1', points: 5, rank: 1 })]),
     );
+    expect(page.gameweeks).toEqual([{ gameweek_id: ids.gameweek_id, number: 15 }]);
+    expect(page.rows.find((r) => r.pseudo === 'OverallPlayer1')?.gameweek_points).toEqual([5]);
   });
 
   it('sums a player’s points across every scored gameweek in the season, not just the latest', async () => {
@@ -93,6 +100,13 @@ describe('overall_standings refresh', () => {
         }),
       ]),
     );
+    // Ordered by gameweek number ascending (gw2's number is 2, gw1's is 15 —
+    // seedLeague's fixed gameweek number, unrelated to insertion order).
+    expect(page.gameweeks).toEqual([
+      { gameweek_id: gw2_id, number: 2 },
+      { gameweek_id: ids.gameweek_id, number: 15 },
+    ]);
+    expect(page.rows.find((r) => r.pseudo === 'OverallPlayer2')?.gameweek_points).toEqual([2, 5]);
   });
 
   it('is idempotent: calling runScoringForGameweek again does not double-count', async () => {

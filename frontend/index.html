@@ -117,6 +117,9 @@
   .hof-table tbody tr:nth-child(even) td { background: #eaf3fc; }
   .hof-pending { text-align: center; color: var(--muted); font-size: 0.9rem; margin: 0.5rem 0 0; }
   .classement-table .classement-score { background: #dbeafe; font-weight: 700; }
+  .classement-table-wrap { overflow-x: auto; }
+  .classement-table-wrap .classement-table { width: auto; min-width: 100%; }
+  .classement-table-wrap .classement-table th, .classement-table-wrap .classement-table td { white-space: nowrap; }
   .league-logo-card {
     display: flex;
     flex-direction: column;
@@ -470,12 +473,11 @@
   }
 
   /**
-   * Total-season standings (GET .../standings/overall). The old site's
-   * "Classement général" also broke each player's score down by gameweek
-   * (columns 29, 30, 31…) — that history isn't exposed by the current API
-   * (only the season total/rank per player), so this shows rank/pseudo/score
-   * only. Adding the per-gameweek breakdown is a backend change, not a
-   * frontend one.
+   * Total-season standings (GET .../standings/overall). Matches the old
+   * site's "Classement général": one column per recent gameweek (oldest
+   * first, capped at 10 by the API) plus a Total column. `res.body.gameweeks`
+   * gives the column headers; each row's `gameweek_points` is index-aligned
+   * to it, with null shown as "–" (not scored yet, or no prediction that week).
    */
   function renderClassementCard(league, season_id) {
     var card = el('div', { class: 'feature-card' });
@@ -494,24 +496,36 @@
       .then(function (res) {
         body.innerHTML = '';
         var rows = (res.status === 200 && res.body.data) || [];
+        var gameweeks = (res.status === 200 && res.body.gameweeks) || [];
         if (rows.length === 0) {
           body.appendChild(el('p', { class: 'hof-pending', text: 'Aucun classement pour le moment — soyez le premier à pronostiquer !' }));
           return;
         }
+        var tableWrap = el('div', { class: 'classement-table-wrap' });
         var table = el('table', { class: 'hof-table classement-table' });
-        table.appendChild(el('thead', {}, [
-          el('tr', {}, [el('th', { text: '#' }), el('th', { text: 'Pseudo' }), el('th', { text: 'Score' })]),
-        ]));
+        var headerCells = [el('th', { text: '#' }), el('th', { text: 'Pseudo' })];
+        gameweeks.forEach(function (gw) {
+          headerCells.push(el('th', { text: 'J' + gw.number }));
+        });
+        headerCells.push(el('th', { text: 'Total' }));
+        table.appendChild(el('thead', {}, [el('tr', {}, headerCells)]));
         var tbody = el('tbody');
         rows.forEach(function (r) {
-          tbody.appendChild(el('tr', {}, [
+          var cells = [
             el('td', { text: r.rank != null ? String(r.rank) : '—' }),
             el('td', { class: 'classement-pseudo', text: r.pseudo }),
-            el('td', { class: 'classement-score', text: String(r.points) }),
-          ]));
+          ];
+          var points = r.gameweek_points || [];
+          gameweeks.forEach(function (gw, i) {
+            var p = points[i];
+            cells.push(el('td', { text: p == null ? '–' : String(p) }));
+          });
+          cells.push(el('td', { class: 'classement-score', text: String(r.points) }));
+          tbody.appendChild(el('tr', {}, cells));
         });
         table.appendChild(tbody);
-        body.appendChild(table);
+        tableWrap.appendChild(table);
+        body.appendChild(tableWrap);
       })
       .catch(function () {
         body.innerHTML = '';
