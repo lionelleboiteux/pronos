@@ -17,14 +17,19 @@ export type SubmitFeedbackRequest = {
 };
 
 export type SubmitFeedbackDeps = {
-  repo: { insertFeedback(message: string, client_ip: string): Promise<{ id: string }> };
+  repo: { insertFeedback(message: string, client_ip: string, project: string): Promise<{ id: string }> };
   mailer: { sendReceipt(to: string, subject: string, text: string, html: string): Promise<boolean> };
   rateLimiter: { check(key: string, now: Date): { allowed: boolean; limit: number } };
   now(): Date;
   notifyTo: string;
 };
 
-const FeedbackBody = z.object({ message: z.string().trim().min(1).max(2000) });
+// project defaults to 'pronos': fc-shared's <fc-feedback> always sends it
+// explicitly, but this keeps pre-existing/older clients working.
+const FeedbackBody = z.object({
+  message: z.string().trim().min(1).max(2000),
+  project: z.string().trim().min(1).max(60).default('pronos'),
+});
 
 /** Minimal escaping — this message only ever renders inside an HTML email, never in the app itself. */
 const escapeHtml = (s: string): string =>
@@ -48,13 +53,13 @@ export async function handleSubmitFeedback(
     });
   }
 
-  const { id } = await deps.repo.insertFeedback(parsed.data.message, req.client_ip);
+  const { id } = await deps.repo.insertFeedback(parsed.data.message, req.client_ip, parsed.data.project);
 
   // Best-effort: the submission is already durably stored above, so a Gmail
   // outage must not turn into a 500 for the player.
   await deps.mailer.sendReceipt(
     deps.notifyTo,
-    'Nouveau feedback — Jeu des Pronos',
+    'Nouveau feedback — ' + parsed.data.project,
     parsed.data.message,
     '<p>' + escapeHtml(parsed.data.message).replace(/\n/g, '<br>') + '</p>',
   ).catch(() => false);

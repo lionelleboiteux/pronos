@@ -28,33 +28,10 @@
   "inLanguage": "fr"
 }
 </script>
-<!--
-  Google Funding Choices (GDPR consent for EU visitors) — must load before
-  the AdSense script below so ads only fire once consent is resolved. The
-  banner itself only appears once a "Privacy & messaging" GDPR message is
-  published in the AdSense account for pub-6481777982811975; this script
-  is the standard Google-published loader, keyed only by publisher ID.
--->
-<script async src="https://fundingchoicesmessages.google.com/i/pub-6481777982811975?ers=1"></script>
-<script>
-  (function () {
-    function signalGooglefcPresent() {
-      if (!window.frames['googlefcPresent']) {
-        if (document.body) {
-          var iframe = document.createElement('iframe');
-          iframe.style.cssText = 'width: 0; height: 0; border: none; z-index: -1000; left: -1000px; top: -1000px;';
-          iframe.style.display = 'none';
-          iframe.name = 'googlefcPresent';
-          document.body.appendChild(iframe);
-        } else {
-          setTimeout(signalGooglefcPresent, 0);
-        }
-      }
-    }
-    signalGooglefcPresent();
-  })();
-</script>
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6481777982811975" crossorigin="anonymous"></script>
+<!-- Shared nav/ads/feedback components — see https://github.com/lionelleboiteux/fc-shared -->
+<script src="https://cdn.jsdelivr.net/gh/lionelleboiteux/fc-shared@main/nav.js" defer></script>
+<script src="https://cdn.jsdelivr.net/gh/lionelleboiteux/fc-shared@main/ads.js" async></script>
+<script src="https://cdn.jsdelivr.net/gh/lionelleboiteux/fc-shared@main/feedback.js" defer></script>
 <style>
   :root {
     /* fantasy-coach.fr's own blue (sampled from the live site), reused here
@@ -81,35 +58,6 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     line-height: 1.5;
   }
-  .site-banner {
-    background: linear-gradient(180deg, var(--fc-blue-light) 0%, var(--fc-blue) 100%);
-    color: #ffffff;
-    margin: 0 -1rem 1.5rem;
-    padding: 1.25rem 1rem 0;
-  }
-  .site-banner-top {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-    text-align: center;
-  }
-  .site-logo { width: 56px; height: 56px; border-radius: 50%; }
-  .site-title { display: block; font-size: 1.5rem; font-weight: 800; color: #ffffff; text-decoration: none; }
-  .site-tagline { margin: 0.1rem 0 0; font-size: 0.82rem; opacity: 0.9; }
-  .site-nav {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.25rem 1rem;
-    margin-top: 1rem;
-    padding: 0.6rem 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.3);
-    font-size: 0.85rem;
-  }
-  .site-nav a { color: #ffffff; text-decoration: none; font-weight: 600; }
-  .site-nav a.active { text-decoration: underline; text-underline-offset: 3px; }
   .site-footer { text-align: center; font-size: 0.8rem; color: var(--muted); margin: 2.5rem 0 1rem; }
   main { max-width: 640px; margin: 0 auto; }
   h1 { font-size: 1.4rem; margin: 0.5rem 0 1rem; }
@@ -262,35 +210,6 @@
   #global-message { font-size: 0.9rem; margin-bottom: 1rem; }
   #global-message.error { color: var(--error); }
   #global-message.ok { color: var(--ok); }
-  .feedback-textarea {
-    width: 100%;
-    padding: 0.55rem 0.7rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--card);
-    color: var(--ink);
-    font-size: 0.95rem;
-    font-family: inherit;
-    resize: vertical;
-    margin-top: 0.5rem;
-  }
-  .feedback-submit {
-    display: block;
-    width: 100%;
-    margin-top: 0.75rem;
-    padding: 0.6rem;
-    background: var(--accent);
-    color: var(--accent-ink);
-    border: none;
-    border-radius: 10px;
-    font-size: 0.95rem;
-    font-weight: 700;
-    cursor: pointer;
-  }
-  .feedback-submit:disabled { opacity: 0.6; cursor: default; }
-  .feedback-message { font-size: 0.85rem; margin: 0.5rem 0 0; min-height: 1.2em; }
-  .feedback-message.error { color: var(--error); }
-  .feedback-message.ok { color: var(--ok); }
   .league-cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -351,25 +270,7 @@
 </style>
 </head>
 <body>
-<header class="site-banner">
-  <div class="site-banner-top">
-    <a href="https://www.fantasy-coach.fr/">
-      <img class="site-logo" src="https://static.wixstatic.com/media/449182_b075115d95e54908bebcaaef43561929~mv2.png/v1/fill/w_174,h_174,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/newlogo.png" alt="logo fantasy coach">
-    </a>
-    <div>
-      <a class="site-title" href="https://www.fantasy-coach.fr/">Fantasy Coach</a>
-      <p class="site-tagline">La référence Fantasy Foot</p>
-    </div>
-  </div>
-  <nav class="site-nav">
-    <a href="https://www.fantasy-coach.fr/ligue1">Ligue 1</a>
-    <a href="https://www.fantasy-coach.fr/fantasy-l1">Fantasy L1</a>
-    <a href="https://www.fantasy-coach.fr/sorare">Sorare</a>
-    <a href="https://www.fantasy-coach.fr/fpl">FPL</a>
-    <a href="https://www.fantasy-coach.fr/bundesliga">Bundesliga</a>
-    <a href="https://www.fantasy-coach.fr/pronos" class="active">Pronos</a>
-  </nav>
-</header>
+<fc-nav current="pronos"></fc-nav>
 
 <main id="app">
   <h1>Pronostics Foot Gratuits — Ligue 1, Premier League, Bundesliga, Serie A, La Liga</h1>
@@ -715,64 +616,6 @@
     });
   }
 
-  /**
-   * POST /v1/feedback — no client-side email sending (deliberately: that
-   * would need Gmail credentials in page-visible JS, an open door for abuse).
-   * Validation here is just a fast UX check; the server re-validates and
-   * rate-limits independently, since a client can always be bypassed.
-   */
-  function renderFeedbackCard() {
-    var card = el('div', { class: 'feature-card' });
-    card.appendChild(el('h2', { text: 'Une question, un problème, une suggestion ?' }));
-    card.appendChild(el('p', { class: 'hof-pending', text: 'Vous avez des questions, problèmes ou suggestions ? Envoyez-les-nous !' }));
-
-    var textarea = el('textarea', { class: 'feedback-textarea', maxlength: '2000', rows: '4', 'aria-label': 'Votre message' });
-    var message = el('p', { class: 'feedback-message' });
-    var submitBtn = el('button', { type: 'button', class: 'feedback-submit', text: 'Envoyer' });
-
-    card.appendChild(textarea);
-    card.appendChild(message);
-    card.appendChild(submitBtn);
-
-    submitBtn.addEventListener('click', function () {
-      var value = textarea.value.trim();
-      if (!value) {
-        message.className = 'feedback-message error';
-        message.textContent = 'Merci d’écrire un message avant d’envoyer.';
-        textarea.focus();
-        return;
-      }
-      submitBtn.disabled = true;
-      message.className = 'feedback-message';
-      message.textContent = 'Envoi en cours…';
-
-      apiFetch('/v1/feedback', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message: value }),
-      }).then(function (res) {
-        submitBtn.disabled = false;
-        if (res.status === 200) {
-          message.className = 'feedback-message ok';
-          message.textContent = 'Merci, votre message a bien été envoyé !';
-          textarea.value = '';
-        } else if (res.status === 429) {
-          message.className = 'feedback-message error';
-          message.textContent = 'Trop de messages envoyés — réessayez dans une minute.';
-        } else {
-          message.className = 'feedback-message error';
-          message.textContent = (res.body && res.body.error && res.body.error.message) || 'Erreur lors de l’envoi.';
-        }
-      }).catch(function () {
-        submitBtn.disabled = false;
-        message.className = 'feedback-message error';
-        message.textContent = 'Connexion impossible. Réessayez.';
-      });
-    });
-
-    return card;
-  }
-
   function loadPseudo() {
     try { return localStorage.getItem(PSEUDO_KEY) || ''; } catch (e) { return ''; }
   }
@@ -871,7 +714,7 @@
       el('div', { class: 'area-league-logo' }, [renderLeagueLogoCard(league)]),
       el('div', { class: 'area-rules' }, [renderRulesCard()]),
       el('div', { class: 'area-hof' }, [renderHallOfFameCard(league)]),
-      el('div', { class: 'area-feedback' }, [renderFeedbackCard()]),
+      el('div', { class: 'area-feedback' }, [el('fc-feedback', { project: 'pronos' })]),
     ]);
     layout.appendChild(predictionsArea);
     layout.appendChild(sidebar);
