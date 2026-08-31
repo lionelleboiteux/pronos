@@ -139,6 +139,13 @@ While investigating, restored a feature the old spreadsheet-era site had that th
 - `tests/unit/scoringRun.test.ts`: added the `all_games_finished: false` skip case. `tests/unit/tick.test.ts`: added a case proving scoring keeps retrying for a closed gameweek across ticks even after the league's `current_gameweek_id` has moved past it — the regression this fix exists to prevent.
 - 129/129 relevant unit/telemetry/contract tests and 6/6 relevant DB tests (3 existing + 3 new) pass; `tsc --noEmit` clean.
 
+### Admin `open` Override No Longer Leaves a Silent Scoring Gap Behind It (2026-08-31)
+
+**La Liga's "Classement général" showed only gameweeks 2 and 3, never 1, despite gameweek 1 being fully played (10/10 matches finished).** Root cause: `action: open` (`repository.ts`'s `applyAction`) sets `leagues.current_gameweek_id` straight to the target gameweek — the recovery tool for a league whose current gameweek is stuck or null. On 2026-08-28, La Liga's stall (CHANGELOG "Gameweek Transition Dead End") was recovered with an admin `open` straight onto gameweek 2, which jumped `current_gameweek_id` there directly without ever emitting gameweek 1's `gameweek_closed` event. Since scoring only ever triggers off a gameweek having closed, gameweek 1 was silently skipped forever — fully played, never scored, permanently missing from the classement, with nothing in the automated pipeline ever going to notice or fix it.
+
+- `src/db/repository.ts`: added `closeSkippedGameweeks()`, called by `applyAction` before every `action: open` — finds every earlier gameweek in the same season missing a `gameweek_closed` event, closes and scores each one (reusing the same already-scored check `runScoringForGameweek` uses, so it's safe to call on every `open`, not just recovery ones). Live La Liga GW1's data (fully finished, never scored) still needs one manual `rescore` call to backfill — this fix only prevents the gap from recurring on a future recovery, it doesn't retroactively fix data from before it shipped.
+- `tests/db/adminOpenBackfill.test.ts` (new, 2 tests against real Postgres): opening a later gameweek backfills an earlier, fully-finished, never-closed one; opening again doesn't double-close or double-score a gameweek that was already closed.
+
 ## Future Work (Before Season Start)
 
 One telemetry event type has correct domain logic but lacks a scheduled trigger in production:
