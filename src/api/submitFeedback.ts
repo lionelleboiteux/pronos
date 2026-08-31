@@ -17,18 +17,41 @@ export type SubmitFeedbackRequest = {
 };
 
 export type SubmitFeedbackDeps = {
-  repo: { insertFeedback(message: string, client_ip: string, project: string): Promise<{ id: string }> };
+  repo: {
+    insertFeedback(input: {
+      message: string;
+      client_ip: string;
+      project: string;
+      pseudo?: string;
+      email?: string;
+    }): Promise<{ id: string }>;
+  };
   mailer: { sendReceipt(to: string, subject: string, text: string, html: string): Promise<boolean> };
   rateLimiter: { check(key: string, now: Date): { allowed: boolean; limit: number } };
   now(): Date;
   notifyTo: string;
 };
 
+/**
+ * A syntactic check only, same permissive pattern as submitPrediction.ts's
+ * receipt email — this is just so Lio has something to reply to, not an
+ * auth-grade check.
+ */
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Blank text/email inputs from the form arrive as '' — treat that as "not provided". */
+const emptyToUndefined = (v: unknown): unknown =>
+  typeof v === 'string' && v.trim() === '' ? undefined : v;
+
 // project defaults to 'pronos': fc-shared's <fc-feedback> always sends it
-// explicitly, but this keeps pre-existing/older clients working.
+// explicitly, but this keeps pre-existing/older clients working. pseudo and
+// email are both optional — neither is required to send feedback, but
+// either lets Lio reply to whoever sent it.
 const FeedbackBody = z.object({
   message: z.string().trim().min(1).max(2000),
   project: z.string().trim().min(1).max(60).default('pronos'),
+  pseudo: z.preprocess(emptyToUndefined, z.string().trim().max(60).optional()),
+  email: z.preprocess(emptyToUndefined, z.string().trim().regex(EMAIL).optional()),
 });
 
 /** Minimal escaping — this message only ever renders inside an HTML email, never in the app itself. */
@@ -53,16 +76,30 @@ export async function handleSubmitFeedback(
     });
   }
 
-  const { id } = await deps.repo.insertFeedback(parsed.data.message, req.client_ip, parsed.data.project);
+  const { id } = await deps.repo.insertFeedback({
+    message: parsed.data.message,
+    client_ip: req.client_ip,
+    project: parsed.data.project,
+    pseudo: parsed.data.pseudo,
+    email: parsed.data.email,
+  });
+
+  // Contact details are appended after the message, not folded into it, so
+  // Lio can always tell what the player actually typed from what fc-feedback
+  // added.
+  const contactLines = [
+    parsed.data.pseudo ? `Pseudo : ${parsed.data.pseudo}` : null,
+    parsed.data.email ? `Email : ${parsed.data.email}` : null,
+  ].filter((line): line is string => line !== null);
+
+  const text = [parsed.data.message, ...(contactLines.length ? ['', ...contactLines] : [])].join('\n');
+  const html =
+    '<p>' + escapeHtml(parsed.data.message).replace(/\n/g, '<br>') + '</p>' +
+    (contactLines.length ? '<p>' + contactLines.map(escapeHtml).join('<br>') + '</p>' : '');
 
   // Best-effort: the submission is already durably stored above, so a Gmail
   // outage must not turn into a 500 for the player.
-  await deps.mailer.sendReceipt(
-    deps.notifyTo,
-    'Nouveau feedback — ' + parsed.data.project,
-    parsed.data.message,
-    '<p>' + escapeHtml(parsed.data.message).replace(/\n/g, '<br>') + '</p>',
-  ).catch(() => false);
+  await deps.mailer.sendReceipt(deps.notifyTo, 'Nouveau feedback — ' + parsed.data.project, text, html).catch(() => false);
 
   return { status: 200, body: { id } };
 }

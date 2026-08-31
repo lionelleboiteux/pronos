@@ -515,10 +515,16 @@ export function createRepository(pool: QueryExecutor) {
     },
 
     /** Parameterized insert only — never string-build this query (SQL injection). */
-    async insertFeedback(message: string, client_ip: string, project: string): Promise<{ id: string }> {
+    async insertFeedback(input: {
+      message: string;
+      client_ip: string;
+      project: string;
+      pseudo?: string;
+      email?: string;
+    }): Promise<{ id: string }> {
       const res = await pool.query(
-        `insert into feedback (message, client_ip, project) values ($1, $2, $3) returning id`,
-        [message, client_ip, project],
+        `insert into feedback (message, client_ip, project, pseudo, email) values ($1, $2, $3, $4, $5) returning id`,
+        [input.message, input.client_ip, input.project, input.pseudo ?? null, input.email ?? null],
       );
       return res.rows[0];
     },
