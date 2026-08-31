@@ -42,9 +42,16 @@ function buildDeps(opts: {
   currentGameweekWrites: Array<{ league_id: string; gameweek_id: string | null }>;
   scoringRuns: string[];
 } {
-  const inserted: unknown[] = [];
+  const inserted: Array<{ event_type: string; gameweek_id: string | null }> = [];
   const currentGameweekWrites: Array<{ league_id: string; gameweek_id: string | null }> = [];
   const scoringRuns: string[] = [];
+  // Gameweeks the fixture already marks closed_event_emitted:true simulate a
+  // gameweek_closed telemetry row from a previous tick; unioned below with
+  // whatever gameweek_closed events this tick inserts, mirroring the real
+  // repo's telemetry-sourced listGameweeksAwaitingScoring query.
+  const preClosedIds = opts.leagues.flatMap((l) =>
+    l.gameweeks.filter((gw) => gw.closed_event_emitted).map((gw) => gw.id),
+  );
   const deps: TickDeps = {
     now: () => opts.now,
     auth: { verifyBearer: async () => ({ valid: opts.tokenValid ?? true }) },
@@ -56,6 +63,13 @@ function buildDeps(opts: {
       },
       runScoringForGameweek: async (gameweek_id) => {
         scoringRuns.push(gameweek_id);
+      },
+      listGameweeksAwaitingScoring: async () => {
+        const newlyClosed = inserted
+          .filter((e) => e.event_type === 'gameweek_closed')
+          .map((e) => e.gameweek_id)
+          .filter((id): id is string => id !== null);
+        return [...new Set([...preClosedIds, ...newlyClosed])];
       },
     },
   };
@@ -186,6 +200,39 @@ describe('POST /v1/internal/tick', () => {
 
     expect(currentGameweekWrites).toHaveLength(0);
     expect(inserted).toHaveLength(0);
+  });
+
+  it('keeps retrying scoring for a closed gameweek on every tick, even once the league has advanced past it', async () => {
+    // gameweek_closed fires and is guarded exactly once per gameweek
+    // (gameweekTransition.ts), so if scoring only ran on that one tick, a
+    // gameweek whose matches hadn't finished yet at that instant would never
+    // be scored automatically again — the same class of dead end as the
+    // La Liga GW3 stall, one step further down the pipeline. Retries must be
+    // sourced from "closed but not yet scored" (listGameweeksAwaitingScoring),
+    // not from this tick's own events, precisely so they survive the league
+    // moving on to a later gameweek in the meantime.
+    const alreadyAdvanced: LeagueState = {
+      league_id: 'league-bl1',
+      league_code: 'BL1',
+      current_gameweek_id: 'gw2',
+      gameweeks: [
+        {
+          id: 'gw1',
+          number: 1,
+          matches: [{ id: 'game1', starts_at: LAST_KICKOFF, lock_event_emitted: true }],
+          closed_event_emitted: true,
+        },
+        { id: 'gw2', number: 2, matches: [], closed_event_emitted: false },
+      ],
+    };
+    const { deps, scoringRuns } = buildDeps({
+      now: new Date(AFTER.getTime() + 3_600_000),
+      leagues: [alreadyAdvanced],
+    });
+
+    await handleTick({ authorization: 'Bearer valid' }, deps);
+
+    expect(scoringRuns).toEqual(['gw1']);
   });
 
   it('writes back current_gameweek_id once the next gameweek is finally ingested, on a tick with no gameweek_closed event', async () => {

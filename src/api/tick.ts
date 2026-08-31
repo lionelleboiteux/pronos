@@ -6,12 +6,18 @@
  * a league's current gameweek never actually closed or advanced no matter
  * how long ago its last match kicked off (see README "Current Status").
  *
- * Also runs the scoring engine for any gameweek that closes this tick — the
+ * Also runs the scoring engine for every gameweek still awaiting it — the
  * same gap as above, one step further down the pipeline: `runScoring()` has
  * existed as tested logic since the initial build, but was only ever wired
  * to the manual admin "rescore" action, never to an automatic post-close
  * trigger, so a closed gameweek's classement stayed empty until an operator
- * rescored it by hand.
+ * rescored it by hand. This deliberately re-checks every closed-but-unscored
+ * gameweek on every tick (via `listGameweeksAwaitingScoring`), not just the
+ * one that closed this tick: a gameweek closes to new predictions the
+ * instant its last match kicks off, but the match itself can run for ~2
+ * hours after that before a final score exists, so scoring only the tick a
+ * gameweek closes on would score it against placeholder data. See
+ * scoringRun.ts's `all_games_finished` gate for the other half of this.
  *
  * Same trust tier as /v1/ingest/fixtures: a machine-to-machine credential
  * held by the scheduled caller (here, a secret in Supabase Vault that the
@@ -34,8 +40,10 @@ export type TickDeps = {
     listOpenGameweekStates(): Promise<LeagueState[]>;
     insertTelemetryEvents(events: TickResult['events']): Promise<void>;
     setCurrentGameweek(league_id: string, gameweek_id: string | null): Promise<void>;
-    /** No-ops if this gameweek already has a scoring_run_completed event. */
+    /** No-ops if this gameweek already has a scoring_run_completed event, or its games aren't all finished yet. */
     runScoringForGameweek(gameweek_id: string, now: Date): Promise<void>;
+    /** Every closed gameweek without a scoring_run_completed event yet, however long ago it closed. */
+    listGameweeksAwaitingScoring(): Promise<string[]>;
   };
 };
 
@@ -56,11 +64,8 @@ export async function handleTick(req: TickRequest, deps: TickDeps): Promise<ApiR
 
   await deps.repo.insertTelemetryEvents(result.events);
 
-  const closedGameweekIds = result.events
-    .filter((e) => e.event_type === 'gameweek_closed')
-    .map((e) => e.gameweek_id)
-    .filter((id): id is string => id !== null);
-  for (const gameweek_id of closedGameweekIds) {
+  const awaitingScoring = await deps.repo.listGameweeksAwaitingScoring();
+  for (const gameweek_id of awaitingScoring) {
     await deps.repo.runScoringForGameweek(gameweek_id, now);
   }
 

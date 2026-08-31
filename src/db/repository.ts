@@ -177,20 +177,24 @@ export function createRepository(pool: QueryExecutor) {
    * post-close scoring run (src/api/tick.ts), which passes a real
    * `already_completed` flag so a retried/overlapping cron tick can't
    * double-run it (runScoring's own no-op guard, scoringRun.ts).
+   *
+   * Returns whether scoring actually ran, so callers (the admin override
+   * response, in particular) don't report success for a silent no-op.
    */
   async function computeAndPersistScoring(
     gameweek_id: string,
     now: Date,
     already_completed: boolean,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const gw = await pool.query(
-      `select gw.league_id, gw.season_id, coalesce(max(g.starts_at), gw.starts_at) as last_kickoff_at
+      `select gw.league_id, gw.season_id,
+              coalesce(bool_and(g.status = 'finished'), false) as all_games_finished
          from gameweeks gw left join games g on g.gameweek_id = gw.id
         where gw.id = $1 group by gw.id`,
       [gameweek_id],
     );
     const gameweek = gw.rows[0];
-    if (!gameweek) return;
+    if (!gameweek) return false;
 
     const predictions = await pool.query(
       `select pr.player_id, p.pseudo, pr.game_id,
@@ -225,11 +229,11 @@ export function createRepository(pool: QueryExecutor) {
       now,
       league_id: gameweek.league_id,
       gameweek_id,
-      last_kickoff_at: gameweek.last_kickoff_at,
+      all_games_finished: gameweek.all_games_finished,
       already_completed,
       players: [...byPlayer.values()],
     });
-    if (!run.ran) return;
+    if (!run.ran) return false;
 
     for (const row of run.standings) {
       await pool.query(
@@ -259,6 +263,7 @@ export function createRepository(pool: QueryExecutor) {
 
     await refreshOverallStandings(gameweek.season_id);
     await insertTelemetryEvents(run.events);
+    return true;
   }
 
   /**
@@ -295,8 +300,9 @@ export function createRepository(pool: QueryExecutor) {
     );
   }
 
-  async function rescore(gameweek_id: string): Promise<void> {
-    await computeAndPersistScoring(gameweek_id, new Date(), false);
+  /** Returns whether the rescore actually recomputed anything (see computeAndPersistScoring). */
+  async function rescore(gameweek_id: string): Promise<boolean> {
+    return computeAndPersistScoring(gameweek_id, new Date(), false);
   }
 
   async function insertTelemetryEvents(events: TelemetryEvent[]): Promise<void> {
@@ -747,9 +753,9 @@ export function createRepository(pool: QueryExecutor) {
       const before: string | null = gameweek.current_gameweek_id;
 
       if (action === 'rescore') {
-        await rescore(gameweek_id);
+        const ran = await rescore(gameweek_id);
         return {
-          applied: true,
+          applied: ran,
           current_gameweek_id_before: before,
           current_gameweek_id_after: before,
         };
@@ -905,11 +911,15 @@ export function createRepository(pool: QueryExecutor) {
     },
 
     /**
-     * The automated counterpart to the admin "rescore" action: called once
-     * per tick for each gameweek that just closed (src/api/tick.ts). Checks
-     * `already_completed` for real (unlike the always-force manual action),
-     * so an overlapping or retried cron tick can't score the same gameweek
-     * twice.
+     * The automated counterpart to the admin "rescore" action: called every
+     * tick for every gameweek `listGameweeksAwaitingScoring` reports
+     * (src/api/tick.ts), not just the one that just closed — a gameweek's
+     * matches can take ~2 hours to finish after the last kickoff, so this is
+     * expected to no-op (via `all_games_finished`, see scoringRun.ts) on most
+     * of the ticks it's called on, until it finally runs once games are
+     * finished. Checks `already_completed` for real (unlike the always-force
+     * manual action), so an overlapping or retried cron tick can't score the
+     * same gameweek twice.
      */
     async runScoringForGameweek(gameweek_id: string, now: Date): Promise<void> {
       const already = await pool.query(
@@ -920,6 +930,34 @@ export function createRepository(pool: QueryExecutor) {
         [gameweek_id],
       );
       await computeAndPersistScoring(gameweek_id, now, already.rows[0].done);
+    },
+
+    /**
+     * Every gameweek that has closed to predictions (a `gameweek_closed`
+     * telemetry event exists) but hasn't been scored yet (no matching
+     * `scoring_run_completed` event) — regardless of whether it's still any
+     * league's `current_gameweek_id`. Driven by telemetry rather than
+     * `listOpenGameweekStates()` deliberately: `gameweek_closed` fires and is
+     * guarded exactly once per gameweek (gameweekTransition.ts), and a
+     * league can advance past a gameweek (to a successor whose fixtures
+     * arrived, or because the season moved on) before that gameweek's
+     * matches actually finished — at which point it drops out of
+     * `listOpenGameweekStates()` entirely. Sourcing retries from telemetry
+     * instead means a gameweek keeps getting retried here until it's
+     * actually scored, no matter how far the league has since moved on.
+     */
+    async listGameweeksAwaitingScoring(): Promise<string[]> {
+      const res = await pool.query(
+        `select distinct gc.gameweek_id
+           from telemetry_events gc
+          where gc.event_type = 'gameweek_closed'
+            and gc.gameweek_id is not null
+            and not exists (
+              select 1 from telemetry_events sc
+               where sc.event_type = 'scoring_run_completed' and sc.gameweek_id = gc.gameweek_id
+            )`,
+      );
+      return res.rows.map((r) => r.gameweek_id as string);
     },
   };
 }

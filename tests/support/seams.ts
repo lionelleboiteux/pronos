@@ -217,8 +217,8 @@ export type ScoringRunInput = {
   now: Date;
   league_id: string;
   gameweek_id: string;
-  /** Kickoff of the gameweek's last scheduled match. */
-  last_kickoff_at: Date;
+  /** True once every game in the gameweek has a final result (games.status = 'finished'). */
+  all_games_finished: boolean;
   /** True when a scoring_run_completed event already exists for this gameweek. */
   already_completed: boolean;
   players: ScoringRunPlayer[];
