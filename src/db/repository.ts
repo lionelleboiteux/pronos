@@ -10,7 +10,7 @@ import type { OverrideAction } from '../api/adminOverride.ts';
 import type { GameRecord } from '../api/submitPrediction.ts';
 import type { LeagueCurrentState } from '../api/getCurrentGameweek.ts';
 import type { FixtureInput } from '../api/syncFixtures.ts';
-import type { TelemetryEvent } from '../telemetry/events.ts';
+import { buildTelemetryEvent, type TelemetryEvent } from '../telemetry/events.ts';
 
 /**
  * The only shape this module needs from a Postgres client. node-postgres's
@@ -303,6 +303,60 @@ export function createRepository(pool: QueryExecutor) {
   /** Returns whether the rescore actually recomputed anything (see computeAndPersistScoring). */
   async function rescore(gameweek_id: string): Promise<boolean> {
     return computeAndPersistScoring(gameweek_id, new Date(), false);
+  }
+
+  /**
+   * `action: open` sets `leagues.current_gameweek_id` straight to the target
+   * gameweek — the tool for recovering a league whose current gameweek is
+   * stuck or, per adminOverride.ts's own docstring, "never opened yet". A
+   * bare jump like that skips whatever gameweek(s) came before it in the
+   * same season without ever emitting their `gameweek_closed` event, so
+   * they're never scored either: confirmed live on La Liga, where an admin
+   * `open` onto gameweek 2 (recovering the null-current_gameweek_id stall
+   * documented in CHANGELOG "Gameweek Transition Dead End") left gameweek 1
+   * — fully played, 10/10 matches finished — permanently unscored, because
+   * nothing ever closed it. Closes and scores every earlier gameweek in the
+   * season that's missing a `gameweek_closed` event before the jump, so an
+   * `open` override can no longer leave a silent gap behind it.
+   */
+  async function closeSkippedGameweeks(
+    league_id: string,
+    league_code: string,
+    season_id: string,
+    before_number: number,
+    now: Date,
+  ): Promise<void> {
+    const skipped = await pool.query(
+      `select gw.id, gw.number
+         from gameweeks gw
+        where gw.season_id = $1 and gw.number < $2
+          and not exists (
+            select 1 from telemetry_events te
+             where te.event_type = 'gameweek_closed' and te.gameweek_id = gw.id
+          )
+        order by gw.number`,
+      [season_id, before_number],
+    );
+    for (const row of skipped.rows) {
+      await insertTelemetryEvents([
+        buildTelemetryEvent('gameweek_closed', {
+          league: league_code,
+          gameweek: row.number,
+          closed_at: now.toISOString(),
+          league_id,
+          gameweek_id: row.id,
+          occurred_at: now.toISOString(),
+        }),
+      ]);
+      const already = await pool.query(
+        `select exists(
+           select 1 from telemetry_events
+            where event_type = 'scoring_run_completed' and gameweek_id = $1
+         ) as done`,
+        [row.id],
+      );
+      await computeAndPersistScoring(row.id, now, already.rows[0].done);
+    }
   }
 
   async function insertTelemetryEvents(events: TelemetryEvent[]): Promise<void> {
@@ -745,7 +799,7 @@ export function createRepository(pool: QueryExecutor) {
 
     async applyAction(action: OverrideAction, gameweek_id: string) {
       const gw = await pool.query(
-        `select gw.league_id, gw.season_id, gw.number, l.current_gameweek_id
+        `select gw.league_id, gw.season_id, gw.number, l.code as league_code, l.current_gameweek_id
            from gameweeks gw join leagues l on l.id = gw.league_id where gw.id = $1`,
         [gameweek_id],
       );
@@ -763,6 +817,13 @@ export function createRepository(pool: QueryExecutor) {
 
       let after: string | null = before;
       if (action === 'open') {
+        await closeSkippedGameweeks(
+          gameweek.league_id,
+          gameweek.league_code,
+          gameweek.season_id,
+          gameweek.number,
+          new Date(),
+        );
         after = gameweek_id;
       } else {
         const next = await pool.query(
