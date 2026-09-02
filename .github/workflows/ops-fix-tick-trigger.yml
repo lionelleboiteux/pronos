@@ -41,11 +41,16 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: gw2 telemetry event timeline per league
+        if: always()
         run: |
           supabase db query --linked --agent=no -o json "
             select l.code as league_code, g.id as gameweek_id, g.starts_at,
-              (select occurred_at from telemetry_events te where te.event_type='gameweek_closed' and te.gameweek_id=g.id) as closed_at,
-              (select occurred_at from telemetry_events te where te.event_type='scoring_run_completed' and te.gameweek_id=g.id) as scored_at
+              (select count(*) from telemetry_events te where te.event_type='gameweek_closed' and te.gameweek_id=g.id) as closed_count,
+              (select min(occurred_at) from telemetry_events te where te.event_type='gameweek_closed' and te.gameweek_id=g.id) as first_closed_at,
+              (select max(occurred_at) from telemetry_events te where te.event_type='gameweek_closed' and te.gameweek_id=g.id) as last_closed_at,
+              (select count(*) from telemetry_events te where te.event_type='scoring_run_completed' and te.gameweek_id=g.id) as scored_count,
+              (select min(occurred_at) from telemetry_events te where te.event_type='scoring_run_completed' and te.gameweek_id=g.id) as first_scored_at,
+              (select max(occurred_at) from telemetry_events te where te.event_type='scoring_run_completed' and te.gameweek_id=g.id) as last_scored_at
             from gameweeks g join leagues l on l.id = g.league_id
             where g.number = 2
             order by l.code;
@@ -53,7 +58,22 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
+      - name: admin_manual_intervention events on gw2 (were these manually rescored?)
+        if: always()
+        run: |
+          supabase db query --linked --agent=no -o json "
+            select l.code as league_code, te.occurred_at, te.payload
+            from telemetry_events te
+            join gameweeks g on g.id = te.gameweek_id
+            join leagues l on l.id = g.league_id
+            where g.number = 2 and te.event_type = 'admin_manual_intervention'
+            order by te.occurred_at;
+          "
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
       - name: vault secret creation time
+        if: always()
         run: |
           supabase db query --linked --agent=no -o json "
             select name, created_at, updated_at from vault.secrets where name = 'tick_token';
@@ -62,6 +82,7 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: cron job run history (last 20)
+        if: always()
         run: |
           supabase db query --linked --agent=no -o json "
             select jrd.status, jrd.return_message, jrd.start_time, jrd.end_time
