@@ -1,0 +1,101 @@
+name: Ops - Diagnose and fix gameweek tick trigger
+
+# One-off manual workflow: creates the `tick_token` Supabase Vault secret
+# that db/migrations/20260825090000_schedule_gameweek_transition_tick.sql
+# documents as a required manual step (never performed in production, per
+# README "Current Status"), then calls POST /v1/internal/tick once directly
+# so any already-closed-but-unscored gameweek gets scored immediately
+# instead of waiting for the next pg_cron minute. Prints before/after
+# diagnostics so the run log shows exactly what was broken and what changed.
+#
+# Uses only the repo's existing SUPABASE_ACCESS_TOKEN and INGEST_TOKEN
+# secrets — no new secrets, no secret values ever appear in this workflow's
+# source or output beyond what GitHub's automatic log masking already
+# handles for registered secrets.
+
+on:
+  workflow_dispatch: {}
+
+env:
+  SUPABASE_PROJECT_REF: dmytkubjxwwwkroutvdu
+  PRONOS_API_BASE: https://dmytkubjxwwwkroutvdu.supabase.co/functions/v1/api
+
+jobs:
+  fix-and-tick:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.111.0
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Diagnose (before)
+        run: |
+          supabase db query --linked --agent=no -o json "
+            select jsonb_build_object(
+              'cron_job', (select jsonb_agg(jsonb_build_object('jobid', jobid, 'schedule', schedule, 'active', active)) from cron.job where jobname = 'gameweek-transition-tick'),
+              'recent_http_responses', (select jsonb_agg(t) from (select id, status_code, created from net._http_response order by id desc limit 5) t),
+              'tick_token_exists', (select count(*) > 0 from vault.decrypted_secrets where name = 'tick_token'),
+              'gw2_status', (select jsonb_agg(jsonb_build_object(
+                  'league_code', l.code,
+                  'gameweek_id', g.id,
+                  'starts_at', g.starts_at,
+                  'closed', exists(select 1 from telemetry_events te where te.event_type='gameweek_closed' and te.gameweek_id=g.id),
+                  'scored', exists(select 1 from telemetry_events te where te.event_type='scoring_run_completed' and te.gameweek_id=g.id),
+                  'games_total', (select count(*) from games gm where gm.gameweek_id=g.id),
+                  'games_finished', (select count(*) from games gm where gm.gameweek_id=g.id and gm.status='finished')
+                )) from gameweeks g join leagues l on l.id = g.league_id where g.number = 2)
+            ) as diagnosis;
+          " | tee before.json
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Create tick_token vault secret if missing
+        run: |
+          EXISTS=$(supabase db query --linked --agent=no -o json \
+            "select count(*)::int as c from vault.decrypted_secrets where name = 'tick_token';" | jq -r '.[0].c')
+          if [ "$EXISTS" = "0" ]; then
+            ESCAPED=${INGEST_TOKEN//\'/\'\'}
+            supabase db query --linked --agent=no -o json \
+              "select vault.create_secret('${ESCAPED}', 'tick_token') as secret_id;"
+            echo "Created tick_token vault secret."
+          else
+            echo "tick_token vault secret already exists; leaving it as-is."
+          fi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+
+      - name: Call /v1/internal/tick directly (don't wait for next cron minute)
+        run: |
+          curl -sS -w '\nHTTP %{http_code}\n' -X POST "$PRONOS_API_BASE/v1/internal/tick" \
+            -H "Authorization: Bearer ${INGEST_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{}'
+        env:
+          INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
+
+      - name: Diagnose (after)
+        run: |
+          supabase db query --linked --agent=no -o json "
+            select jsonb_build_object(
+              'tick_token_exists', (select count(*) > 0 from vault.decrypted_secrets where name = 'tick_token'),
+              'gw2_status', (select jsonb_agg(jsonb_build_object(
+                  'league_code', l.code,
+                  'gameweek_id', g.id,
+                  'closed', exists(select 1 from telemetry_events te where te.event_type='gameweek_closed' and te.gameweek_id=g.id),
+                  'scored', exists(select 1 from telemetry_events te where te.event_type='scoring_run_completed' and te.gameweek_id=g.id),
+                  'games_total', (select count(*) from games gm where gm.gameweek_id=g.id),
+                  'games_finished', (select count(*) from games gm where gm.gameweek_id=g.id and gm.status='finished'),
+                  'standings_rows', (select count(*) from league_gameweek_standings s where s.gameweek_id=g.id)
+                )) from gameweeks g join leagues l on l.id = g.league_id where g.number = 2)
+            ) as diagnosis;
+          "
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
