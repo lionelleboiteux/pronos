@@ -29,6 +29,24 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
+      - name: L1 current_gameweek_id and gw3 existence
+        if: always()
+        run: |
+          supabase db query --linked --agent=no -o json "
+            select
+              l.code, l.current_gameweek_id,
+              (select number from gameweeks where id = l.current_gameweek_id) as current_gw_number,
+              (select jsonb_agg(jsonb_build_object(
+                  'gameweek_id', g.id, 'number', g.number, 'starts_at', g.starts_at,
+                  'games_total', (select count(*) from games gm where gm.gameweek_id = g.id),
+                  'games_scheduled', (select count(*) from games gm where gm.gameweek_id = g.id and gm.status='scheduled'),
+                  'games_finished', (select count(*) from games gm where gm.gameweek_id = g.id and gm.status='finished')
+                ) order by g.number) from gameweeks g where g.league_id = l.id and g.number in (2,3)) as gw2_and_gw3
+            from leagues l where l.code = 'L1';
+          "
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
       - name: Tick call history (status code timeline)
         run: |
           supabase db query --linked --agent=no -o json "
