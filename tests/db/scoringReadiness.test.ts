@@ -134,3 +134,115 @@ describe('scoring readiness (all games finished, not just kickoff passed)', () =
     expect(standings.rows).toEqual([{ points: 10 }]); // 5 (exact) + 5 (exact)
   });
 });
+
+describe('automatic rescoring after a retroactive prediction backfill (no manual admin rescore needed)', () => {
+  it('runScoringForGameweek rescores once a prediction is inserted directly into Postgres after the gameweek was already scored', async () => {
+    const { client } = db();
+    const repo = createRepository(client);
+    const ids = await seedLeague(client, { code: 'sr-4', name: 'Scoring Readiness League 4' });
+    await client.query(
+      `update games set status = 'finished', home_team_score = 2, away_team_score = 1 where id = $1`,
+      [ids.game_id],
+    );
+    const player1 = await seedPlayer(client, 'ReadinessPlayer4a');
+    await insertPrediction(client, ids, player1, 2, 1); // exact, 5 points
+    // Pin this "normal" prediction's updated_at into the fictional past —
+    // insertPrediction otherwise leaves it at Postgres's real wall-clock
+    // now(), which would already postdate the fixed 2026 dates used below.
+    // Production has no such gap: every timestamp involved there comes from
+    // the same real clock.
+    await client.query(`update predictions set updated_at = $1 where player_id = $2 and game_id = $3`, [
+      new Date('2026-08-10T18:00:00Z'),
+      player1,
+      ids.game_id,
+    ]);
+
+    await repo.runScoringForGameweek(ids.gameweek_id, new Date('2026-08-11T00:00:00Z'));
+
+    let standings = await client.query(
+      `select player_id, points from league_gameweek_standings where gameweek_id = $1`,
+      [ids.gameweek_id],
+    );
+    expect(standings.rows).toEqual([{ player_id: player1, points: 5 }]);
+
+    // A retroactive backfill straight into Postgres, after scoring already
+    // ran — the only way a prediction can be added once its match has kicked
+    // off (the API's kickoff lock, lock.ts, forbids it there).
+    const player2 = await seedPlayer(client, 'ReadinessPlayer4b');
+    await insertPrediction(client, ids, player2, 2, 1); // exact, 5 points
+    await client.query(`update predictions set updated_at = $1 where player_id = $2 and game_id = $3`, [
+      new Date('2026-08-11T01:00:00Z'),
+      player2,
+      ids.game_id,
+    ]);
+
+    // The next automated tick — no manual admin "rescore" call.
+    await repo.runScoringForGameweek(ids.gameweek_id, new Date('2026-08-11T01:05:00Z'));
+
+    standings = await client.query(
+      `select player_id, points from league_gameweek_standings where gameweek_id = $1 order by player_id`,
+      [ids.gameweek_id],
+    );
+    expect(standings.rows).toEqual(
+      expect.arrayContaining([
+        { player_id: player1, points: 5 },
+        { player_id: player2, points: 5 },
+      ]),
+    );
+    expect(standings.rows).toHaveLength(2);
+
+    // A later tick with nothing new to backfill must stay a no-op — the
+    // idempotency guard the manual "always force" admin rescore never had to
+    // respect (repository.ts computeAndPersistScoring's docstring) still
+    // holds for the automated path.
+    await repo.runScoringForGameweek(ids.gameweek_id, new Date('2026-08-11T01:10:00Z'));
+    const completedEvents = await client.query(
+      `select count(*)::int as n from telemetry_events where event_type = 'scoring_run_completed' and gameweek_id = $1`,
+      [ids.gameweek_id],
+    );
+    expect(completedEvents.rows[0].n).toBe(2); // once from the initial score, once from the backfill rescore
+  });
+
+  it('listGameweeksAwaitingScoring surfaces a gameweek again once backfilled, and stays quiet once nothing has changed', async () => {
+    const { client } = db();
+    const repo = createRepository(client);
+    const ids = await seedLeague(client, { code: 'sr-5', name: 'Scoring Readiness League 5' });
+    await client.query(
+      `update games set status = 'finished', home_team_score = 2, away_team_score = 1 where id = $1`,
+      [ids.game_id],
+    );
+    const player1 = await seedPlayer(client, 'ReadinessPlayer5a');
+    await insertPrediction(client, ids, player1, 2, 1);
+    // Pin this "normal" (pre-kickoff) prediction's updated_at into the
+    // fictional past — insertPrediction otherwise leaves it at Postgres's
+    // real wall-clock now(), which would already postdate the fixed 2026
+    // dates used below as this test's scoring "now" and make it look
+    // spuriously stale. Production has no such gap: every timestamp involved
+    // comes from the same real clock there.
+    await client.query(`update predictions set updated_at = $1 where player_id = $2 and game_id = $3`, [
+      new Date('2026-08-10T18:00:00Z'),
+      player1,
+      ids.game_id,
+    ]);
+    await client.query(
+      `insert into telemetry_events (event_type, league_id, gameweek_id, occurred_at) values ('gameweek_closed', $1, $2, $3)`,
+      [ids.league_id, ids.gameweek_id, new Date('2026-08-10T20:00:00Z')],
+    );
+
+    expect(await repo.listGameweeksAwaitingScoring()).toContain(ids.gameweek_id);
+
+    await repo.runScoringForGameweek(ids.gameweek_id, new Date('2026-08-11T00:00:00Z'));
+
+    expect(await repo.listGameweeksAwaitingScoring()).not.toContain(ids.gameweek_id);
+
+    const player2 = await seedPlayer(client, 'ReadinessPlayer5b');
+    await insertPrediction(client, ids, player2, 2, 1);
+    await client.query(`update predictions set updated_at = $1 where player_id = $2 and game_id = $3`, [
+      new Date('2026-08-11T01:00:00Z'),
+      player2,
+      ids.game_id,
+    ]);
+
+    expect(await repo.listGameweeksAwaitingScoring()).toContain(ids.gameweek_id);
+  });
+});

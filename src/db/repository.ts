@@ -981,12 +981,26 @@ export function createRepository(pool: QueryExecutor) {
      * finished. Checks `already_completed` for real (unlike the always-force
      * manual action), so an overlapping or retried cron tick can't score the
      * same gameweek twice.
+     *
+     * "Already completed" means the last `scoring_run_completed` event is no
+     * older than every prediction in the gameweek — not just that one exists.
+     * A prediction backfilled straight into Postgres after a gameweek was
+     * already scored (the only way to add one once its match has kicked off;
+     * see admin "rescore") bumps `predictions.updated_at` past that event, so
+     * the very next tick treats the gameweek as stale and rescoring it stops
+     * needing a manual admin call. A pure resubmit-before-scoring update
+     * doesn't have this effect, since it always predates the eventual
+     * scoring_run_completed event.
      */
     async runScoringForGameweek(gameweek_id: string, now: Date): Promise<void> {
       const already = await pool.query(
         `select exists(
-           select 1 from telemetry_events
-            where event_type = 'scoring_run_completed' and gameweek_id = $1
+           select 1 from telemetry_events sc
+            where sc.event_type = 'scoring_run_completed' and sc.gameweek_id = $1
+              and sc.occurred_at >= coalesce(
+                (select max(pr.updated_at) from predictions pr where pr.gameweek_id = $1),
+                '-infinity'::timestamptz
+              )
          ) as done`,
         [gameweek_id],
       );
@@ -995,17 +1009,26 @@ export function createRepository(pool: QueryExecutor) {
 
     /**
      * Every gameweek that has closed to predictions (a `gameweek_closed`
-     * telemetry event exists) but hasn't been scored yet (no matching
-     * `scoring_run_completed` event) — regardless of whether it's still any
-     * league's `current_gameweek_id`. Driven by telemetry rather than
-     * `listOpenGameweekStates()` deliberately: `gameweek_closed` fires and is
-     * guarded exactly once per gameweek (gameweekTransition.ts), and a
-     * league can advance past a gameweek (to a successor whose fixtures
-     * arrived, or because the season moved on) before that gameweek's
-     * matches actually finished — at which point it drops out of
-     * `listOpenGameweekStates()` entirely. Sourcing retries from telemetry
-     * instead means a gameweek keeps getting retried here until it's
-     * actually scored, no matter how far the league has since moved on.
+     * telemetry event exists) but hasn't been *validly* scored yet —
+     * regardless of whether it's still any league's `current_gameweek_id`.
+     * Driven by telemetry rather than `listOpenGameweekStates()` deliberately:
+     * `gameweek_closed` fires and is guarded exactly once per gameweek
+     * (gameweekTransition.ts), and a league can advance past a gameweek (to a
+     * successor whose fixtures arrived, or because the season moved on)
+     * before that gameweek's matches actually finished — at which point it
+     * drops out of `listOpenGameweekStates()` entirely. Sourcing retries from
+     * telemetry instead means a gameweek keeps getting retried here until
+     * it's actually scored, no matter how far the league has since moved on.
+     *
+     * "Not validly scored" includes stale, not just missing: a
+     * `scoring_run_completed` event older than the gameweek's newest
+     * prediction means a prediction was backfilled after the fact (the only
+     * way to add one post-kickoff) and the standings it produced are out of
+     * date. Without this, a gameweek permanently drops out of this list the
+     * first time it's scored, so a manual admin "rescore" would be needed
+     * every single time a late prediction is backfilled — see
+     * `runScoringForGameweek`'s matching `already_completed` check, which
+     * this mirrors so both agree on what "stale" means.
      */
     async listGameweeksAwaitingScoring(): Promise<string[]> {
       const res = await pool.query(
@@ -1016,6 +1039,10 @@ export function createRepository(pool: QueryExecutor) {
             and not exists (
               select 1 from telemetry_events sc
                where sc.event_type = 'scoring_run_completed' and sc.gameweek_id = gc.gameweek_id
+                 and sc.occurred_at >= coalesce(
+                   (select max(pr.updated_at) from predictions pr where pr.gameweek_id = gc.gameweek_id),
+                   '-infinity'::timestamptz
+                 )
             )`,
       );
       return res.rows.map((r) => r.gameweek_id as string);
