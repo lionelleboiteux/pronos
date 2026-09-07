@@ -1,0 +1,66 @@
+name: Ops - Diagnose SA/LL gameweek changeover
+
+# One-off diagnostic: Serie A (SA) and La Liga (LL) gameweeks reportedly
+# finished in real life but the league's current_gameweek_id hasn't
+# advanced. Pulls current_gameweek_id + the current and next gameweek's
+# game status counts for both leagues, plus recent ingest-fixtures-visible
+# state, to find out whether it's a stuck game status, a missing next
+# gameweek, or something else. Removed once diagnosed.
+
+on:
+  workflow_dispatch: {}
+
+env:
+  SUPABASE_PROJECT_REF: dmytkubjxwwwkroutvdu
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.111.0
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: SA/LL current_gameweek_id, current+next gameweek game status
+        run: |
+          supabase db query --linked --agent=no -o json "
+            select
+              l.code,
+              l.current_gameweek_id,
+              (select number from gameweeks where id = l.current_gameweek_id) as current_gw_number,
+              (select jsonb_agg(jsonb_build_object(
+                  'gameweek_id', g.id, 'number', g.number, 'starts_at', g.starts_at,
+                  'games', (select jsonb_agg(jsonb_build_object(
+                      'id', gm.id, 'external_id', gm.external_id, 'status', gm.status,
+                      'starts_at', gm.starts_at, 'home_score', gm.home_team_score, 'away_score', gm.away_team_score
+                    ) order by gm.starts_at) from games gm where gm.gameweek_id = g.id)
+                ) order by g.number) from gameweeks g
+               where g.league_id = l.id
+                 and g.number >= coalesce((select number from gameweeks where id = l.current_gameweek_id), 0)
+              ) as gameweeks_from_current
+            from leagues l where l.code in ('SA','LL');
+          "
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: SA/LL gameweek_closed / gameweek_opened telemetry, most recent
+        if: always()
+        run: |
+          supabase db query --linked --agent=no -o json "
+            select l.code, te.event_type, te.occurred_at, g.number as gameweek_number
+            from telemetry_events te
+            join leagues l on l.id = te.league_id
+            left join gameweeks g on g.id = te.gameweek_id
+            where l.code in ('SA','LL') and te.event_type in ('gameweek_closed','gameweek_opened')
+            order by te.occurred_at desc
+            limit 10;
+          "
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
