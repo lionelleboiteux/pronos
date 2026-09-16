@@ -23,6 +23,7 @@ import { handleSendGameweekReceipt } from './sendGameweekReceipt.ts';
 import { handleSyncFixtures } from './syncFixtures.ts';
 import { handleTick } from './tick.ts';
 import { handleSubmitFeedback } from './submitFeedback.ts';
+import { handleRecordPageView } from './recordPageView.ts';
 import { SUBMIT_RATE_LIMIT_PER_MINUTE, createRateLimiter, type RateLimiter } from './rateLimit.ts';
 
 /** An ApiResponse plus any header the HTTP layer itself owes (e.g. Allow). */
@@ -392,6 +393,15 @@ const ROUTES: Route[] = [
             notifyTo: ctx.feedbackNotifyTo ?? 'fantasycoachfr@gmail.com',
           },
         );
+      },
+    },
+  },
+  {
+    pattern: /^\/v1\/page-view$/,
+    query: [],
+    handlers: {
+      POST: async (req, ctx) => {
+        return handleRecordPageView({ body: req.body }, { repo: ctx.repo });
       },
     },
   },

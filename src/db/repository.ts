@@ -603,6 +603,31 @@ export function createRepository(pool: QueryExecutor) {
       return res.rows[0];
     },
 
+    /** First-party page-view counter (page_views, 20260916121420). `view`
+     *  is only ever meaningfully sent by pronos itself, the one sibling
+     *  with more than one distinct page/view. */
+    async insertPageView(input: { project: string; view?: string }): Promise<void> {
+      await pool.query(`insert into page_views (project, view) values ($1, $2)`, [
+        input.project,
+        input.view ?? null,
+      ]);
+    },
+
+    /** Weekly view counts per project (page_views) — the read side of the
+     *  page-view-metrics Edge Function's report. `date_trunc('week', ...)`
+     *  matches dashboard-metrics's own weekly-bucketing idiom exactly. */
+    async getWeeklyPageViews(): Promise<{ project: string; week_start: string; views: number }[]> {
+      const res = await pool.query(
+        `select project,
+                date_trunc('week', created_at)::date::text as week_start,
+                count(*) as views
+           from page_views
+          group by project, week_start
+          order by week_start, project`,
+      );
+      return res.rows.map((row) => ({ project: row.project, week_start: row.week_start, views: Number(row.views) }));
+    },
+
     async getGameweekStandings(
       league_id: string,
       gameweek_id: string,

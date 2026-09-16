@@ -1,14 +1,15 @@
 name: Deploy site to Pages
 
-# Hosts two static pages: the player prediction form (frontend/index.html)
-# at the site root, and John's benefit dashboard (dashboard/index.html)
-# under /dashboard/. Supabase can't serve either: Edge Functions rewrite
+# Hosts three static pages: the player prediction form (frontend/index.html)
+# at the site root, John's benefit dashboard (dashboard/index.html), and the
+# weekly page-view report (dashboard/page-views.html), both under
+# /dashboard/. Supabase can't serve any of these: Edge Functions rewrite
 # any text/html response to text/plain, and public Storage objects get the
-# same downgrade — both confirmed while building the dashboard, see
+# same downgrade — both confirmed while building the first dashboard, see
 # 11-dashboard.v1.md. GitHub Pages' "deploy from a branch" only accepts
-# repo root or /docs as the source path, and neither fits two independent
-# pages at different paths, so this assembles both into one directory and
-# uses the Actions-based Pages deployment instead.
+# repo root or /docs as the source path, and neither fits several
+# independent pages at different paths, so this assembles all of them into
+# one directory and uses the Actions-based Pages deployment instead.
 
 on:
   push:
@@ -17,6 +18,7 @@ on:
       - 'frontend/index.html'
       - 'frontend/ads.txt'
       - 'dashboard/index.html'
+      - 'dashboard/page-views.html'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -42,6 +44,7 @@ jobs:
           cp frontend/index.html _site/index.html
           cp frontend/ads.txt _site/ads.txt
           cp dashboard/index.html _site/dashboard/index.html
+          cp dashboard/page-views.html _site/dashboard/page-views.html
           # Custom domain (DNS: pronos.fantasy-coach.fr CNAME lionelleboiteux.github.io).
           # Must be re-written on every deploy — GitHub Pages drops the custom
           # domain if a deploy ever lands without this file.
