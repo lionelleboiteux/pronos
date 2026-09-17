@@ -290,6 +290,7 @@
   // persisted, so production use is unaffected.
   var API_BASE = new URLSearchParams(location.search).get('api') || 'https://dmytkubjxwwwkroutvdu.supabase.co/functions/v1/api';
   var PSEUDO_KEY = 'pronos.pseudo'; // same key/semantics as src/client/pseudoMemory.ts
+  var EMAIL_KEY = 'pronos.email'; // same key/semantics as src/client/emailMemory.ts
 
   var app = document.getElementById('app');
 
@@ -638,6 +639,12 @@
   function rememberPseudo(pseudo) {
     try { localStorage.setItem(PSEUDO_KEY, pseudo); } catch (e) { /* ignore */ }
   }
+  function loadEmail() {
+    try { return localStorage.getItem(EMAIL_KEY) || ''; } catch (e) { return ''; }
+  }
+  function rememberEmail(email) {
+    try { localStorage.setItem(EMAIL_KEY, email); } catch (e) { /* ignore */ }
+  }
 
   function apiFetch(path, opts) {
     return fetch(API_BASE + path, opts).then(function (r) {
@@ -764,7 +771,7 @@
     var pseudoLabel = el('label', { for: 'pseudo', text: 'Pseudo' });
     var pseudoInput = el('input', { type: 'text', id: 'pseudo', value: loadPseudo(), maxlength: '60', required: 'required' });
     var emailLabel = el('label', { for: 'email', text: 'Email' });
-    var emailInput = el('input', { type: 'email', id: 'email' });
+    var emailInput = el('input', { type: 'email', id: 'email', value: loadEmail() });
     var emailHint = el('p', { class: 'field-hint', text: '(optionnel, pour recevoir un email de confirmation)' });
 
     var contactRow = el('div', { class: 'contact-row' }, [
@@ -883,7 +890,10 @@
 
       Promise.all(results).then(function (outcomes) {
         var okCount = outcomes.filter(Boolean).length;
-        if (okCount > 0) rememberPseudo(pseudo);
+        if (okCount > 0) {
+          rememberPseudo(pseudo);
+          rememberEmail(email);
+        }
 
         if (okCount === outcomes.length) {
           if (!email) {

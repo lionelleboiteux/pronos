@@ -162,6 +162,15 @@ While investigating, restored a feature the old spreadsheet-era site had that th
 - `tests/db/predictionEmail.test.ts` (new, 4 tests against real Postgres): first submission stores the email; a resubmit with a new address updates it, same as the pseudo path; no email submitted leaves it untouched; an email already owned by a different player is silently skipped rather than raising or reassigning it.
 - `tests/unit/submitPrediction.test.ts` (2 new tests): the email is passed through to `upsertPrediction` on a valid submission, and as explicit `null` (not omitted) on a blank one.
 
+### Email Field Now Prefilled From the Device, Same as the Pseudo (2026-09-17)
+
+**Persisting the email server-side (above) didn't make it reappear in the form** — the pseudo field's device memory (AC-10, `pseudoMemory.ts`) is a separate, purely client-side localStorage convenience that the email field never had, so on every visit the player had to retype it even though the pseudo next to it was already filled in.
+
+- `src/client/emailMemory.ts` (new): mirrors `pseudoMemory.ts` exactly — `rememberEmail`/`loadRememberedEmail`/`buildEmailField` over a `Storage`, keyed on `pronos.email`, always editable, never a server-side identity claim (same ADR-0002 rationale as the pseudo).
+- `frontend/index.html`: added the matching inline `loadEmail`/`rememberEmail` pair (same duplication pattern the pseudo already uses, since this static page has no bundler to import `src/client/*` from), prefills the Email input from it, and remembers the submitted value alongside the pseudo once at least one match in the batch saves successfully.
+- `tests/unit/emailMemory.test.ts` (new, 3 tests, mirroring `pseudoMemory.test.ts`): prefills and stays editable; editing before resubmit replaces what's remembered; a first-time device yields an empty field.
+- Verified in a real browser against the live API: with `pronos.pseudo`/`pronos.email` set, both fields prefill on load; with neither set, both are empty and editable.
+
 ## Future Work (Before Season Start)
 
 One telemetry event type has correct domain logic but lacks a scheduled trigger in production:

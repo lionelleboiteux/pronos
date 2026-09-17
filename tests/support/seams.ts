@@ -585,6 +585,24 @@ export async function loadPseudoMemory(): Promise<PseudoMemoryModule> {
 }
 
 // ---------------------------------------------------------------------------
+// src/client/emailMemory.ts
+// ---------------------------------------------------------------------------
+
+export type EmailField = { value: string; readOnly: boolean };
+
+export interface EmailMemoryModule {
+  rememberEmail(storage: Storage, email: string): void;
+  loadRememberedEmail(storage: Storage): string | null;
+  /** Prefilled from the device, mirroring pseudo (AC-10), and still editable. */
+  buildEmailField(storage: Storage): EmailField;
+}
+
+export async function loadEmailMemory(): Promise<EmailMemoryModule> {
+  // @ts-ignore -- production module does not exist yet (red gate)
+  return (await import('../../src/client/emailMemory')) as unknown as EmailMemoryModule;
+}
+
+// ---------------------------------------------------------------------------
 // src/api/client.ts  (consumer side of the OpenAPI contract)
 // ---------------------------------------------------------------------------
 
