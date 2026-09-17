@@ -33,6 +33,24 @@ describe('prediction submission side effects', () => {
     expect(sentEmails.map((e) => e.to)).toEqual(['lio92@example.com']);
   });
 
+  it('a valid optional email is passed to upsertPrediction so it is stored the same way the pseudo is', async () => {
+    const api = await loadSubmitPrediction();
+    const { deps, upserts } = buildSubmitDeps(OPEN_GAME, { now: NOW });
+
+    await api.handleSubmitPrediction(req({ email: 'lio92@example.com' }), deps);
+
+    expect(upserts[0]).toMatchObject({ pseudo: 'Lio_92', email: 'lio92@example.com' });
+  });
+
+  it('a blank email is passed through to upsertPrediction as null, not omitted', async () => {
+    const api = await loadSubmitPrediction();
+    const { deps, upserts } = buildSubmitDeps(OPEN_GAME, { now: NOW });
+
+    await api.handleSubmitPrediction(req({ email: null }), deps);
+
+    expect(upserts[0]).toMatchObject({ pseudo: 'Lio_92', email: null });
+  });
+
   it('AC-12: a blank email field still succeeds with 200 and sends nothing', async () => {
     const api = await loadSubmitPrediction();
     const { deps, sentEmails } = buildSubmitDeps(OPEN_GAME, { now: NOW });

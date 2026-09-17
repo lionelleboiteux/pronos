@@ -566,6 +566,7 @@ export function createRepository(pool: QueryExecutor) {
       game_id: string;
       predicted_home_score: number;
       predicted_away_score: number;
+      email?: string | null;
     }): Promise<{ id: string; player_id: string }> {
       const res = await pool.query(
         `with player as (
@@ -585,7 +586,30 @@ export function createRepository(pool: QueryExecutor) {
          returning id, player_id`,
         [input.pseudo, input.game_id, input.predicted_home_score, input.predicted_away_score],
       );
-      return res.rows[0];
+      const stored = res.rows[0];
+
+      // Best-effort, same as the pseudo write above but never allowed to fail
+      // the submission: `email` carries its own unique constraint, and with
+      // no accounts two different pseudos can legitimately share a mailbox
+      // (a household, a typo'd resubmission under a new pseudo). The guard
+      // only writes when that email isn't already claimed by a *different*
+      // player, so a collision is a silent no-op rather than a thrown
+      // unique-violation that would otherwise take the whole prediction down
+      // with it.
+      if (input.email) {
+        await pool.query(
+          `update players
+              set email = $2, updated_at = now()
+            where id = $1
+              and email is distinct from $2
+              and not exists (
+                select 1 from players other where other.email = $2 and other.id <> $1
+              )`,
+          [stored.player_id, input.email],
+        );
+      }
+
+      return stored;
     },
 
     /** Parameterized insert only — never string-build this query (SQL injection). */

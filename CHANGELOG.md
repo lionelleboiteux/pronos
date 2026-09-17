@@ -153,6 +153,15 @@ While investigating, restored a feature the old spreadsheet-era site had that th
 - `src/db/repository.ts`: both `runScoringForGameweek`'s `already` check and `listGameweeksAwaitingScoring`'s query now compare the gameweek's `scoring_run_completed.occurred_at` against `max(predictions.updated_at)` for that gameweek, not just existence — a `scoring_run_completed` event older than the newest prediction is treated as stale, not done. A gameweek backfilled after being scored is picked up again on the very next automated tick, with no manual `rescore` call needed.
 - `tests/db/scoringReadiness.test.ts` (2 new tests against real Postgres): a prediction inserted directly into Postgres after a gameweek was already scored gets folded into standings on the next `runScoringForGameweek` call with no admin action, and a further tick with nothing new stays a no-op (idempotency preserved); `listGameweeksAwaitingScoring` surfaces the gameweek again once backfilled and stays quiet once nothing has changed.
 
+### Submitted Email Now Persisted on the Player, Same as the Pseudo (2026-09-17)
+
+**`players.email` has existed since the initial schema (nullable, unique) but nothing ever wrote to it.** AC-12's email receipt is a fire-and-forget side effect (`mailer.sendReceipt`) — the address a player types is used once to send a receipt and then discarded, never stored on their `players` row. This surfaced while investigating a pseudo/email mix-up (a player pasted their email into the *pseudo* field, requiring a manual identity fix): having the real email on file for a pseudo would make that kind of admin cleanup, and contacting a player directly, much easier.
+
+- `src/db/repository.ts`: `upsertPrediction` now takes an optional `email` and, after the existing pseudo upsert, best-effort persists it onto the player row — mirroring the pseudo upsert but never allowed to fail the submission it rides along with. `email` carries its own unique constraint, and with no accounts two different pseudos can legitimately share a mailbox (a household, a re-submission under a corrected pseudo); the write is guarded to only apply when that email isn't already claimed by a *different* player, so a collision is a silent no-op rather than a thrown unique-violation.
+- `src/api/submitPrediction.ts`: passes the already-validated `email` through to `upsertPrediction` instead of only using it for the receipt.
+- `tests/db/predictionEmail.test.ts` (new, 4 tests against real Postgres): first submission stores the email; a resubmit with a new address updates it, same as the pseudo path; no email submitted leaves it untouched; an email already owned by a different player is silently skipped rather than raising or reassigning it.
+- `tests/unit/submitPrediction.test.ts` (2 new tests): the email is passed through to `upsertPrediction` on a valid submission, and as explicit `null` (not omitted) on a blank one.
+
 ## Future Work (Before Season Start)
 
 One telemetry event type has correct domain logic but lacks a scheduled trigger in production:

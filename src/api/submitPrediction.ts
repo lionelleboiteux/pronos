@@ -44,6 +44,7 @@ export type SubmitDeps = {
       game_id: string;
       predicted_home_score: number;
       predicted_away_score: number;
+      email?: string | null;
     }): Promise<{ id: string; player_id: string }>;
   };
   telemetry: TelemetrySink;
@@ -136,14 +137,15 @@ export async function handleSubmitPrediction(
     );
   }
 
+  const email = parsed.data.email ?? null;
   const stored = await deps.repo.upsertPrediction({
     pseudo: parsed.data.pseudo,
     game_id: game.id,
     predicted_home_score: parsed.data.predicted_home_score,
     predicted_away_score: parsed.data.predicted_away_score,
+    email,
   });
 
-  const email = parsed.data.email ?? null;
   const alreadySent = req.idempotency_key !== undefined && deps.idempotency.seen(req.idempotency_key);
   let email_receipt_queued = false;
 

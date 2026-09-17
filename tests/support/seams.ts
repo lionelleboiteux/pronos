@@ -376,6 +376,7 @@ export type SubmitDeps = {
       game_id: string;
       predicted_home_score: number;
       predicted_away_score: number;
+      email?: string | null;
     }): Promise<{ id: string; player_id: string }>;
   };
   telemetry: TelemetrySink;
