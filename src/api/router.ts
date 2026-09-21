@@ -17,6 +17,7 @@ import type { Repository } from '../db/repository.ts';
 import { createTelemetrySink } from '../telemetry/events.ts';
 import { errorResponse, type ApiResponse } from './errors.ts';
 import { handleGetCurrentGameweek } from './getCurrentGameweek.ts';
+import { handleGetTeamForm } from './getTeamForm.ts';
 import { handleGameweekOverride } from './adminOverride.ts';
 import { handleSubmitPrediction, type SubmitRequest } from './submitPrediction.ts';
 import { handleSendGameweekReceipt } from './sendGameweekReceipt.ts';
@@ -143,6 +144,19 @@ const ROUTES: Route[] = [
           return invalid('league_id must be a UUID.');
         }
         return { status: 200, body: { data: await ctx.repo.listTeams(league_id) } };
+      },
+    },
+  },
+  {
+    pattern: /^\/v1\/teams\/form$/,
+    query: ['league', 'name'],
+    handlers: {
+      GET: async (req, ctx) => {
+        const league = req.query.get('league');
+        const name = req.query.get('name');
+        if (!league) return invalid('league is required.');
+        if (!name || name.length > 60) return invalid('name is required and must be at most 60 characters.');
+        return handleGetTeamForm({ league, name }, { repo: ctx.repo });
       },
     },
   },

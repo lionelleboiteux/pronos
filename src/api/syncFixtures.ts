@@ -40,6 +40,7 @@ export type SyncFixturesDeps = {
   auth: { verifyBearer(token: string | null): Promise<{ valid: boolean }> };
   repo: {
     upsertFixture(input: FixtureInput): Promise<{ game_id: string; gameweek_id: string }>;
+    recomputeTeamFormSnapshot(team_id: string): Promise<void>;
   };
 };
 
@@ -79,9 +80,20 @@ export async function handleSyncFixtures(
   }
 
   const results: Array<{ game_id: string; gameweek_id: string; external_id: string }> = [];
+  const teamsToRecompute = new Set<string>();
   for (const game of parsed.data.games) {
     const outcome = await deps.repo.upsertFixture(game);
     results.push({ ...outcome, external_id: game.external_id });
+    if (game.status === 'finished') {
+      teamsToRecompute.add(game.home_team_id);
+      teamsToRecompute.add(game.away_team_id);
+    }
+  }
+  // Last-5-form snapshot, recomputed only for teams whose games actually
+  // changed in this batch (not a full recompute-all pass) -- piggybacks on
+  // the existing hourly ingest cron, no separate schedule.
+  for (const team_id of teamsToRecompute) {
+    await deps.repo.recomputeTeamFormSnapshot(team_id);
   }
 
   return { status: 200, body: { games_processed: results.length, games: results } };

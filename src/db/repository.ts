@@ -463,6 +463,85 @@ export function createRepository(pool: QueryExecutor) {
     insertTelemetryEvents,
     upsertFixture,
 
+    /**
+     * Recomputes and upserts one team's last-5-league-results snapshot
+     * (team_form_snapshot), called from the ingest write path
+     * (syncFixtures.ts) for just the teams whose games changed in that
+     * batch — not a full recompute-all pass. `results` is stored
+     * oldest -> newest; `result` is 'W'|'D'|'L' from this team's own
+     * perspective. No-op (leaves any existing snapshot row untouched) if
+     * the team has no finished games yet.
+     */
+    async recomputeTeamFormSnapshot(team_id: string): Promise<void> {
+      const rows = await pool.query(
+        `select g.id, g.league_id, g.home_team_id, g.away_team_id, g.starts_at,
+                g.home_team_score, g.away_team_score,
+                th.name as home_name, th.short_name as home_short_name, th.display_code as home_display_code,
+                ta.name as away_name, ta.short_name as away_short_name, ta.display_code as away_display_code
+           from games g
+           join teams th on th.id = g.home_team_id
+           join teams ta on ta.id = g.away_team_id
+          where (g.home_team_id = $1 or g.away_team_id = $1)
+            and g.status = 'finished'
+          order by g.starts_at desc
+          limit 5`,
+        [team_id],
+      );
+      if (rows.rows.length === 0) return;
+
+      const results = rows.rows
+        .slice()
+        .reverse()
+        .map((r) => {
+          const isHome = r.home_team_id === team_id;
+          const team_score = isHome ? r.home_team_score : r.away_team_score;
+          const opponent_score = isHome ? r.away_team_score : r.home_team_score;
+          const result = team_score > opponent_score ? 'W' : team_score < opponent_score ? 'L' : 'D';
+          return {
+            game_id: r.id,
+            opponent_name: isHome ? r.away_name : r.home_name,
+            opponent_short_name: isHome ? r.away_short_name : r.home_short_name,
+            opponent_code: isHome ? r.away_display_code : r.home_display_code,
+            is_home: isHome,
+            team_score,
+            opponent_score,
+            result,
+            starts_at: r.starts_at,
+          };
+        });
+
+      const league_id = rows.rows[0].league_id as string;
+      await pool.query(
+        `insert into team_form_snapshot (team_id, league_id, results, updated_at)
+         values ($1, $2, $3, now())
+         on conflict (team_id) do update
+           set league_id = excluded.league_id, results = excluded.results, updated_at = now()`,
+        [team_id, league_id, JSON.stringify(results)],
+      );
+    },
+
+    /** Backs GET /v1/teams/form. `league_code` matches `leagues.code` (e.g. "L1"). */
+    async getTeamFormByShortName(league_code: string, short_name: string) {
+      const res = await pool.query(
+        `select t.name as team_name, t.short_name, t.display_code as code,
+                s.results, s.updated_at
+           from teams t
+           join leagues l on l.id = t.league_id
+           left join team_form_snapshot s on s.team_id = t.id
+          where l.code = $1 and t.short_name = $2`,
+        [league_code, short_name],
+      );
+      const row = res.rows[0];
+      if (!row) return null;
+      return {
+        team_name: row.team_name as string,
+        short_name: row.short_name as string | null,
+        code: row.code as string | null,
+        results: (row.results ?? []).map((r: any) => ({ ...r, starts_at: new Date(r.starts_at) })),
+        updated_at: row.updated_at ? new Date(row.updated_at) : null,
+      };
+    },
+
     async listLeagues() {
       const res = await pool.query(`select id, code, name, logo_url from leagues order by name`);
       return res.rows;
