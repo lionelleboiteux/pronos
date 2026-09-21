@@ -17,6 +17,7 @@ on:
     paths:
       - 'frontend/index.html'
       - 'frontend/ads.txt'
+      - 'frontend/og-image.jpg'
       - 'dashboard/index.html'
       - 'dashboard/page-views.html'
       - '.github/workflows/pages.yml'
@@ -43,6 +44,7 @@ jobs:
           mkdir -p _site/dashboard
           cp frontend/index.html _site/index.html
           cp frontend/ads.txt _site/ads.txt
+          cp frontend/og-image.jpg _site/og-image.jpg
           cp dashboard/index.html _site/dashboard/index.html
           cp dashboard/page-views.html _site/dashboard/page-views.html
           # Custom domain (DNS: pronos.fantasy-coach.fr CNAME lionelleboiteux.github.io).
