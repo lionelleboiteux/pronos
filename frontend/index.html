@@ -727,7 +727,7 @@
 
   function render(league, gameweek, games, leagues, season_id) {
     app.innerHTML = '';
-    app.appendChild(el('h1', { text: 'Pronostics — ' + league.name }));
+    app.appendChild(el('h1', { text: 'Pronostics ' + league.name + (gameweek ? ' J' + gameweek.number : '') }));
 
     // .area-sidebar groups rules/hof/ads into one box so they stack tightly
     // on desktop (a CSS Grid item spanning predictions' full row height
