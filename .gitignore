@@ -5,3 +5,6 @@ coverage/
 .vitest-tmp/
 .schemathesis/
 __pycache__/
+
+.env
+.env.pronobot

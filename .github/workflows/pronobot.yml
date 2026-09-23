@@ -1,0 +1,40 @@
+name: PronoBot predictions
+
+# Runs 🤖PronoBot, an automated player that predicts each open, unlocked
+# match using TypeSafe AI's Jev model (scripts/pronobot/predict.py), then
+# submits through the same public, unauthenticated POST /v1/predictions
+# every human player uses -- no DB access, no admin token.
+#
+# Hourly, offset 15 minutes after ingest-fixtures.yml so that gameweek/game
+# data (and team form, recomputed on that same ingest write path) is fresh
+# by the time this runs. The script is idempotent per game -- it only acts
+# on games with no `my_prediction` yet for this pseudo -- so an hourly cron
+# still only ever predicts each match once, without needing to precisely
+# detect a gameweek-open transition across 5 leagues that open on different
+# days.
+
+on:
+  schedule:
+    - cron: '15 * * * *'
+  workflow_dispatch: {}
+
+env:
+  PRONOS_API_BASE: https://dmytkubjxwwwkroutvdu.supabase.co/functions/v1/api
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install --disable-pip-version-check -r scripts/pronobot/requirements.txt
+
+      - name: Predict this gameweek's matches
+        run: python3 scripts/pronobot/predict.py
+        env:
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}

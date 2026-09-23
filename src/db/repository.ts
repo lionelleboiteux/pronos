@@ -550,7 +550,7 @@ export function createRepository(pool: QueryExecutor) {
     /** Public, read-only — same trust tier as listLeagues. Feeds the ingest script's name/id resolution. */
     async listTeams(league_id: string | null) {
       const res = await pool.query(
-        `select id, league_id, name, code, external_id from teams
+        `select id, league_id, name, code, external_id, short_name, display_code from teams
           where $1::uuid is null or league_id = $1::uuid
           order by name`,
         [league_id],
