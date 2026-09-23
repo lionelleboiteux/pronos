@@ -31,6 +31,11 @@ API_BASE = os.environ.get(
 # GET /current is exact string equality on this pseudo.
 BOT_PSEUDO = "🤖PronoBot"
 
+# Sent on every submission (persisted onto the player row, same as a human's
+# email) and used to receive the consolidated one-email-per-gameweek receipt
+# (POST .../receipt) once a league's newly-predicted games are all in.
+BOT_EMAIL = "fantasycoachfr@gmail.com"
+
 # Score question criteria: one label per rubric level, 0-indexed (typesafe_sdk's
 # Score.criteria docstring: "one per score from zero"), so level 4 means "4 or more".
 GOAL_BUCKETS = ["0 goals", "1 goal", "2 goals", "3 goals", "4 or more goals"]
@@ -188,6 +193,31 @@ def predict_score(
     return home_goals, away_goals, outcome, response.answers["outcome"].confidence
 
 
+def _post_with_retry(url: str, body: dict, label: str) -> requests.Response | None:
+    """POSTs with the same retry-on-5xx/network-error backoff as _get.
+    Returns the response (any status < 500) or None once retries are
+    exhausted -- the caller decides what a given status code means."""
+    attempts = list(GET_RETRY_BACKOFF_SECONDS) + [None]
+    for i, backoff in enumerate(attempts):
+        try:
+            r = session.post(url, json=body, timeout=15)
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            if backoff is None:
+                print(f"    {label} failed (network error): {exc}")
+                return None
+            print(f"    retrying {label} after network error ({exc}), attempt {i + 1}/{len(attempts)}")
+            time.sleep(backoff)
+            continue
+        if r.status_code < 500:
+            return r
+        if backoff is None:
+            print(f"    {label} failed ({r.status_code}): {r.text[:200]}")
+            return None
+        print(f"    retrying {label} after {r.status_code}, attempt {i + 1}/{len(attempts)}")
+        time.sleep(backoff)
+    return None  # unreachable, satisfies type checkers
+
+
 def submit_prediction(
     league_id: str, game_id: str, home_goals: int, away_goals: int, dry_run: bool
 ) -> bool:
@@ -197,29 +227,38 @@ def submit_prediction(
         "league_id": league_id,
         "game_id": game_id,
         "pseudo": BOT_PSEUDO,
+        "email": BOT_EMAIL,
         "predicted_home_score": home_goals,
         "predicted_away_score": away_goals,
     }
-    attempts = list(GET_RETRY_BACKOFF_SECONDS) + [None]
-    for i, backoff in enumerate(attempts):
-        try:
-            r = session.post(f"{API_BASE}/v1/predictions", json=body, timeout=15)
-        except (requests.ConnectionError, requests.Timeout) as exc:
-            if backoff is None:
-                print(f"    submit failed (network error): {exc}")
-                return False
-            print(f"    retrying submit after network error ({exc}), attempt {i + 1}/{len(attempts)}")
-            time.sleep(backoff)
-            continue
-        if r.status_code == 200:
-            return True
-        if r.status_code >= 500 and backoff is not None:
-            print(f"    retrying submit after {r.status_code}, attempt {i + 1}/{len(attempts)}")
-            time.sleep(backoff)
-            continue
+    r = _post_with_retry(f"{API_BASE}/v1/predictions", body, "submit")
+    if r is None:
+        return False
+    if r.status_code != 200:
         print(f"    submit failed ({r.status_code}): {r.text[:200]}")
         return False
-    return False  # unreachable, satisfies type checkers
+    return True
+
+
+def send_gameweek_receipt(league_id: str, gameweek_id: str, dry_run: bool) -> None:
+    """One consolidated email of everything predicted in this run, to
+    BOT_EMAIL -- mirrors the frontend's own post-submission call
+    (frontend/index.html), sent once per league per run that actually
+    submitted something new (never on an idle "nothing new" run)."""
+    if dry_run:
+        print(f"    [dry-run] would request a gameweek receipt to {BOT_EMAIL}")
+        return
+    body = {"pseudo": BOT_PSEUDO, "email": BOT_EMAIL}
+    r = _post_with_retry(
+        f"{API_BASE}/v1/leagues/{league_id}/gameweeks/{gameweek_id}/receipt", body, "receipt request"
+    )
+    if r is None:
+        return
+    if r.status_code != 200:
+        print(f"    receipt request failed ({r.status_code}): {r.text[:200]}")
+        return
+    sent = r.json().get("email_sent")
+    print(f"    gameweek receipt {'sent' if sent else 'requested but not sent'} to {BOT_EMAIL}")
 
 
 def run(dry_run: bool) -> None:
@@ -248,6 +287,7 @@ def run(dry_run: bool) -> None:
                 print(f"  gameweek {gameweek['number']}: nothing new to predict")
                 continue
 
+            submitted_count = 0
             for entry in todo:
                 game = entry["game"]
                 home_name = game["home_team"]["name"]
@@ -265,6 +305,8 @@ def run(dry_run: bool) -> None:
                         away_form,
                     )
                     ok = submit_prediction(league_id, game["id"], home_goals, away_goals, dry_run)
+                    if ok:
+                        submitted_count += 1
                     tag = "[dry-run] " if dry_run else ""
                     status = "ok" if ok else "FAILED"
                     print(
@@ -277,6 +319,13 @@ def run(dry_run: bool) -> None:
                     print(f"  Jev error on {home_name} v {away_name}: {exc}")
                 except requests.RequestException as exc:
                     print(f"  network error on {home_name} v {away_name}: {exc}")
+
+            # One consolidated receipt per league per run that actually
+            # submitted something new -- never on an idle "nothing new" run
+            # (handled by the `if not todo: continue` above), and not at all
+            # if every submission in this batch failed.
+            if submitted_count > 0:
+                send_gameweek_receipt(league_id, gameweek["id"], dry_run)
         except requests.RequestException as exc:
             print(f"  FAILED to fetch league state: {exc}")
             continue
