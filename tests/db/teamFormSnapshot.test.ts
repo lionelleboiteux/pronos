@@ -173,10 +173,10 @@ describe('team form snapshot', () => {
     await repo.recomputeTeamFormSnapshot(ids.team_a);
     const result = await repo.getTeamFormByShortName('tfs-3', 'tfs-3Home');
 
-    expect(result?.results.map((r) => r.result)).toEqual(['L', 'W', 'D', 'W', 'D']);
+    expect(result?.results.map((r: any) => r.result)).toEqual(['L', 'W', 'D', 'W', 'D']);
     // Oldest-first: 2026-01-02 is the oldest of the *kept* 5 (2026-01-01 was
     // dropped as the 6th-oldest), newest (2026-01-06) last.
-    expect(result?.results.map((r) => r.starts_at.toISOString())).toEqual([
+    expect(result?.results.map((r: any) => r.starts_at.toISOString())).toEqual([
       '2026-01-02T18:00:00.000Z',
       '2026-01-03T18:00:00.000Z',
       '2026-01-04T18:00:00.000Z',
