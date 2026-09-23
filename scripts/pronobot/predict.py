@@ -40,28 +40,50 @@ MAX_GOAL_BUCKET = len(GOAL_BUCKETS) - 1
 # ~50 games/week fits trivially with this delay between POSTs.
 SUBMIT_DELAY_SECONDS = 1.5
 
+# This is a shared production API real players also use -- pace every GET so
+# a full run doesn't hammer it back-to-back, and retry transient 5xxs
+# (observed in practice under a burst of ~100 rapid-fire GETs) rather than
+# aborting the whole league on one blip.
+GET_DELAY_SECONDS = 0.4
+GET_RETRY_BACKOFF_SECONDS = (1.0, 2.0)
+
 session = requests.Session()
 session.headers["User-Agent"] = "pronobot/1.0"
 
 
+def _get(url: str, params: dict | None = None) -> requests.Response:
+    time.sleep(GET_DELAY_SECONDS)
+    attempts = list(GET_RETRY_BACKOFF_SECONDS) + [None]
+    last_exc: Exception | None = None
+    for i, backoff in enumerate(attempts):
+        try:
+            r = session.get(url, params=params, timeout=15)
+            if r.status_code >= 500:
+                raise requests.HTTPError(f"{r.status_code} server error", response=r)
+            return r
+        except (requests.HTTPError, requests.ConnectionError, requests.Timeout) as exc:
+            last_exc = exc
+            if backoff is None:
+                raise
+            print(f"    retrying after transient error ({exc}), attempt {i + 1}/{len(attempts)}")
+            time.sleep(backoff)
+    raise last_exc  # unreachable, satisfies type checkers
+
+
 def get_leagues() -> list[dict]:
-    r = session.get(f"{API_BASE}/v1/leagues", timeout=15)
+    r = _get(f"{API_BASE}/v1/leagues")
     r.raise_for_status()
     return r.json()["data"]
 
 
 def get_current(league_id: str) -> dict:
-    r = session.get(
-        f"{API_BASE}/v1/leagues/{league_id}/current",
-        params={"pseudo": BOT_PSEUDO},
-        timeout=15,
-    )
+    r = _get(f"{API_BASE}/v1/leagues/{league_id}/current", params={"pseudo": BOT_PSEUDO})
     r.raise_for_status()
     return r.json()
 
 
 def get_teams(league_id: str) -> list[dict]:
-    r = session.get(f"{API_BASE}/v1/teams", params={"league_id": league_id}, timeout=15)
+    r = _get(f"{API_BASE}/v1/teams", params={"league_id": league_id})
     r.raise_for_status()
     return r.json()["data"]
 
@@ -72,11 +94,7 @@ def get_team_form(league_code: str, short_name: str | None) -> dict | None:
     soft "no data" conditions, not errors."""
     if not short_name:
         return None
-    r = session.get(
-        f"{API_BASE}/v1/teams/form",
-        params={"league": league_code, "name": short_name},
-        timeout=15,
-    )
+    r = _get(f"{API_BASE}/v1/teams/form", params={"league": league_code, "name": short_name})
     if r.status_code == 404:
         return None
     r.raise_for_status()
@@ -175,21 +193,33 @@ def submit_prediction(
 ) -> bool:
     if dry_run:
         return True
-    r = session.post(
-        f"{API_BASE}/v1/predictions",
-        json={
-            "league_id": league_id,
-            "game_id": game_id,
-            "pseudo": BOT_PSEUDO,
-            "predicted_home_score": home_goals,
-            "predicted_away_score": away_goals,
-        },
-        timeout=15,
-    )
-    if r.status_code != 200:
+    body = {
+        "league_id": league_id,
+        "game_id": game_id,
+        "pseudo": BOT_PSEUDO,
+        "predicted_home_score": home_goals,
+        "predicted_away_score": away_goals,
+    }
+    attempts = list(GET_RETRY_BACKOFF_SECONDS) + [None]
+    for i, backoff in enumerate(attempts):
+        try:
+            r = session.post(f"{API_BASE}/v1/predictions", json=body, timeout=15)
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            if backoff is None:
+                print(f"    submit failed (network error): {exc}")
+                return False
+            print(f"    retrying submit after network error ({exc}), attempt {i + 1}/{len(attempts)}")
+            time.sleep(backoff)
+            continue
+        if r.status_code == 200:
+            return True
+        if r.status_code >= 500 and backoff is not None:
+            print(f"    retrying submit after {r.status_code}, attempt {i + 1}/{len(attempts)}")
+            time.sleep(backoff)
+            continue
         print(f"    submit failed ({r.status_code}): {r.text[:200]}")
         return False
-    return True
+    return False  # unreachable, satisfies type checkers
 
 
 def run(dry_run: bool) -> None:
