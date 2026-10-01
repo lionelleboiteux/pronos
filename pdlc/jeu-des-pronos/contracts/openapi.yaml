@@ -184,6 +184,19 @@ paths:
       parameters:
         - $ref: '#/components/parameters/LeagueIdPathParam'
         - $ref: '#/components/parameters/PseudoQueryParam'
+        - name: gameweek
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          description: >-
+            Optional read-only history: the number of an earlier gameweek of
+            the same season as the currently open one. Returns that
+            gameweek's matches and the caller's own picks. A number that is
+            not strictly earlier than the open gameweek (or does not exist)
+            yields `gameweek: null` and `games: []`. Omit for the open
+            gameweek.
       responses:
         '200':
           description: >-

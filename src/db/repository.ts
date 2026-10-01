@@ -558,7 +558,7 @@ export function createRepository(pool: QueryExecutor) {
       return res.rows;
     },
 
-    async getLeagueCurrentState(league_id: string): Promise<LeagueCurrentState | null> {
+    async getLeagueCurrentState(league_id: string, gameweek_number?: number): Promise<LeagueCurrentState | null> {
       const league = await pool.query(
         `select id, code, name, logo_url, current_gameweek_id from leagues where id = $1`,
         [league_id],
@@ -577,9 +577,23 @@ export function createRepository(pool: QueryExecutor) {
         `select id, season_id, number, starts_at, ends_at, stage_name from gameweeks where id = $1`,
         [row.current_gameweek_id],
       );
-      const gameweek = gw.rows[0];
+      let gameweek = gw.rows[0];
       if (!gameweek) {
         return { ...base, season_id: null, gameweek: null, games: [], predictions: [] };
+      }
+
+      // Read-only history: an earlier gameweek of the same season, never a
+      // later one than the currently open gameweek.
+      if (gameweek_number !== undefined && gameweek_number !== gameweek.number) {
+        const past = await pool.query(
+          `select id, season_id, number, starts_at, ends_at, stage_name
+             from gameweeks where season_id = $1 and number = $2 and number < $3`,
+          [gameweek.season_id, gameweek_number, gameweek.number],
+        );
+        gameweek = past.rows[0];
+        if (!gameweek) {
+          return { ...base, season_id: null, gameweek: null, games: [], predictions: [] };
+        }
       }
 
       const games = await pool.query(

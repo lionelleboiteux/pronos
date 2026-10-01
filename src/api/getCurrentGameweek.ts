@@ -45,15 +45,15 @@ export type LeagueCurrentState = {
 export type CurrentGameweekDeps = {
   now(): Date;
   repo: {
-    getLeagueCurrentState(league_id: string): Promise<LeagueCurrentState | null>;
+    getLeagueCurrentState(league_id: string, gameweek_number?: number): Promise<LeagueCurrentState | null>;
   };
 };
 
 export async function handleGetCurrentGameweek(
-  req: { league_id: string; pseudo?: string },
+  req: { league_id: string; pseudo?: string; gameweek_number?: number },
   deps: CurrentGameweekDeps,
 ): Promise<ApiResponse> {
-  const state = await deps.repo.getLeagueCurrentState(req.league_id);
+  const state = await deps.repo.getLeagueCurrentState(req.league_id, req.gameweek_number);
   if (!state) {
     return errorResponse(404, 'NOT_FOUND', 'No league was found matching the given identifier.', {
       league_id: req.league_id,

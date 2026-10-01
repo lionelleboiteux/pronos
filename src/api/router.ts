@@ -162,7 +162,7 @@ const ROUTES: Route[] = [
   },
   {
     pattern: /^\/v1\/leagues\/([^/]+)\/current$/,
-    query: ['pseudo'],
+    query: ['pseudo', 'gameweek'],
     handlers: {
       GET: async (req, ctx) => {
         if (!Uuid.safeParse(req.params[0]).success) return NOT_FOUND();
@@ -170,8 +170,17 @@ const ROUTES: Route[] = [
         if (pseudo !== null && (pseudo.length < 1 || pseudo.length > 60)) {
           return invalid('pseudo must be between 1 and 60 characters.');
         }
+        const gameweekParam = req.query.get('gameweek');
+        const gameweek_number = gameweekParam === null ? undefined : Number(gameweekParam);
+        if (gameweek_number !== undefined && !(Number.isInteger(gameweek_number) && gameweek_number >= 1)) {
+          return invalid('gameweek must be a positive integer.');
+        }
         return handleGetCurrentGameweek(
-          { league_id: req.params[0] as string, ...(pseudo === null ? {} : { pseudo }) },
+          {
+            league_id: req.params[0] as string,
+            ...(pseudo === null ? {} : { pseudo }),
+            ...(gameweek_number === undefined ? {} : { gameweek_number }),
+          },
           { now: () => new Date(), repo: ctx.repo },
         );
       },
