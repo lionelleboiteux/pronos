@@ -8,12 +8,7 @@
  * Deliberately public/unauthenticated: the only data exposed is aggregate
  * weekly admin-minutes and event counts, nothing player-identifying.
  */
-import { Pool } from 'postgres';
-
-const databaseUrl = Deno.env.get('SUPABASE_DB_URL') ?? Deno.env.get('DATABASE_URL');
-if (!databaseUrl) throw new Error('SUPABASE_DB_URL (or DATABASE_URL) must be set.');
-
-const pool = new Pool(databaseUrl, 1, true);
+import { query } from '../_shared/db.ts';
 
 // The dashboard is served from a different origin (GitHub Pages), so this
 // needs to be a real CORS response, not just a JSON one — a browser fetch
@@ -27,32 +22,22 @@ const CORS_HEADERS = {
 type WeeklyAdminMinutes = { week_start: string; total_minutes: number };
 
 async function weeklyAdminMinutes(): Promise<WeeklyAdminMinutes[]> {
-  const conn = await pool.connect();
-  try {
-    const result = await conn.queryObject<{ week_start: string; total_minutes: string }>(
+  const result = await query(
       `select date_trunc('week', occurred_at)::date::text as week_start,
               sum((payload->>'duration_minutes_estimate')::numeric) as total_minutes
          from telemetry_events
         where event_type = 'admin_manual_intervention'
         group by week_start
         order by week_start`,
-    );
-    return result.rows.map((r) => ({ week_start: r.week_start, total_minutes: Number(r.total_minutes) }));
-  } finally {
-    conn.release();
-  }
+  );
+  return result.rows.map((r) => ({ week_start: String(r.week_start), total_minutes: Number(r.total_minutes) }));
 }
 
 async function scoringRunCount(): Promise<number> {
-  const conn = await pool.connect();
-  try {
-    const result = await conn.queryObject<{ count: string }>(
-      `select count(*)::text as count from telemetry_events where event_type = 'scoring_run_completed'`,
-    );
-    return Number(result.rows[0]?.count ?? '0');
-  } finally {
-    conn.release();
-  }
+  const result = await query(
+    `select count(*)::text as count from telemetry_events where event_type = 'scoring_run_completed'`,
+  );
+  return Number(result.rows[0]?.count ?? '0');
 }
 
 Deno.serve(async (req) => {

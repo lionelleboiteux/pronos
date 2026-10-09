@@ -16,12 +16,7 @@
  * visitor-identifying — no cookie, IP, or any other client-side signal is
  * ever stored in `page_views` at all.
  */
-import { Pool } from 'postgres';
-
-const databaseUrl = Deno.env.get('SUPABASE_DB_URL') ?? Deno.env.get('DATABASE_URL');
-if (!databaseUrl) throw new Error('SUPABASE_DB_URL (or DATABASE_URL) must be set.');
-
-const pool = new Pool(databaseUrl, 1, true);
+import { query } from '../_shared/db.ts';
 
 // Served to dashboard/page-views.html from GitHub Pages — a different
 // origin, same reasoning as dashboard-metrics's own CORS_HEADERS: a
@@ -35,20 +30,19 @@ const CORS_HEADERS = {
 type WeeklyPageViews = { project: string; week_start: string; views: number };
 
 async function weeklyPageViews(): Promise<WeeklyPageViews[]> {
-  const conn = await pool.connect();
-  try {
-    const result = await conn.queryObject<{ project: string; week_start: string; views: string }>(
+  const result = await query(
       `select project,
               date_trunc('week', created_at)::date::text as week_start,
               count(*) as views
          from page_views
         group by project, week_start
         order by week_start, project`,
-    );
-    return result.rows.map((r) => ({ project: r.project, week_start: r.week_start, views: Number(r.views) }));
-  } finally {
-    conn.release();
-  }
+  );
+  return result.rows.map((r) => ({
+    project: String(r.project),
+    week_start: String(r.week_start),
+    views: Number(r.views),
+  }));
 }
 
 Deno.serve(async (req) => {

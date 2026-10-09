@@ -7,7 +7,7 @@
  * `Request` shape `handleRequest` already accepts, and supplying a Postgres
  * client that satisfies `QueryExecutor`.
  */
-import { Pool } from 'postgres';
+import { query, isPoolExhausted } from '../_shared/db.ts';
 import { SMTPClient } from 'denomailer';
 import { encodeBase64 } from '@std/encoding/base64';
 import { createRepository, type QueryExecutor } from '../../../src/db/repository.ts';
@@ -15,8 +15,6 @@ import { errorResponse } from '../../../src/api/errors.ts';
 import { handleRequest, type Ctx, type Request as ApiRequest } from '../../../src/api/router.ts';
 import { SUBMIT_RATE_LIMIT_PER_MINUTE, createRateLimiter } from '../../../src/api/rateLimit.ts';
 
-const databaseUrl = Deno.env.get('SUPABASE_DB_URL') ?? Deno.env.get('DATABASE_URL');
-if (!databaseUrl) throw new Error('SUPABASE_DB_URL (or DATABASE_URL) must be set.');
 const adminToken = Deno.env.get('ADMIN_TOKEN');
 if (!adminToken) throw new Error('ADMIN_TOKEN must be set.');
 const ingestToken = Deno.env.get('INGEST_TOKEN');
@@ -79,22 +77,10 @@ const mailer = {
   },
 };
 
-// deno-postgres, Supabase's own documented driver for raw SQL from Edge
-// Functions (https://supabase.com/docs/guides/functions/connect-to-postgres)
-// — a single-connection pool is what that example uses too; Edge Functions
-// are stateless/short-lived so one connection per instance is the right size.
-const pool = new Pool(databaseUrl, 1, true);
-
+// Connection handling (pooler URL preference, idle close) lives in
+// ../_shared/db.ts, shared with the two metrics functions.
 const queryExecutor: QueryExecutor = {
-  async query(text, params = []) {
-    const conn = await pool.connect();
-    try {
-      const result = await conn.queryObject(text, params);
-      return { rows: result.rows as Record<string, unknown>[] };
-    } finally {
-      conn.release();
-    }
-  },
+  query: (text, params = []) => query(text, params),
 };
 
 const ctx: Ctx = {
@@ -157,6 +143,27 @@ async function readBody(req: globalThis.Request): Promise<{ ok: true; body: unkn
   }
 }
 
+
+type HandlerResult = { status: number; body: unknown; headers?: Record<string, string> };
+const CURRENT_TTL_MS = 30_000;
+const currentCache = new Map<string, { at: number; result: HandlerResult }>();
+
+function toResponse(result: HandlerResult, publicCache: boolean): Response {
+  return new Response(JSON.stringify(result.body), {
+    status: result.status,
+    headers: {
+      'content-type': 'application/json',
+      // Lets a rollback (or any deploy) be verified from the outside: which
+      // code actually answered this request, not just "the deploy command
+      // exited 0". Supabase injects DENO_DEPLOYMENT_ID per function version.
+      'x-deployment-id': Deno.env.get('DENO_DEPLOYMENT_ID') ?? 'unknown',
+      ...(publicCache ? { 'cache-control': 'public, max-age=60, stale-while-revalidate=300' } : {}),
+      ...CORS_HEADERS,
+      ...(result.headers ?? {}),
+    },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });
 
@@ -171,9 +178,25 @@ Deno.serve(async (req) => {
   const v1At = url.pathname.indexOf('/v1');
   const pathname = v1At === -1 ? url.pathname : url.pathname.slice(v1At);
 
+  // GET /v1/leagues/:id/current is hit on every public page load. Without a
+  // pseudo it is not player-specific, so a short in-memory cache (plus
+  // CDN/browser Cache-Control below) keeps it off the database; a stale entry
+  // is also served if the database is out of connection slots.
+  const cacheable =
+    req.method === 'GET' && /^\/v1\/leagues\/[^/]+\/current$/.test(pathname) && !url.searchParams.has('pseudo');
+  const cacheKey = pathname + url.search;
+  if (cacheable) {
+    const hit = currentCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < CURRENT_TTL_MS) return toResponse(hit.result, true);
+  }
+
   const body = await readBody(req);
-  const result = body.ok
-    ? await handleRequest(
+  let result: HandlerResult;
+  if (!body.ok) {
+    result = errorResponse(400, 'VALIDATION_FAILED', 'Request body is not valid JSON.');
+  } else {
+    try {
+      result = await handleRequest(
         req.method,
         pathname,
         url.searchParams,
@@ -185,21 +208,23 @@ Deno.serve(async (req) => {
           client_ip: clientIpOf(req.headers),
         },
         ctx,
-      ).catch((err: unknown) =>
-        errorResponse(500, 'INTERNAL_ERROR', (err as Error).message ?? 'An unexpected error occurred.'),
-      )
-    : errorResponse(400, 'VALIDATION_FAILED', 'Request body is not valid JSON.');
-
-  return new Response(JSON.stringify(result.body), {
-    status: result.status,
-    headers: {
-      'content-type': 'application/json',
-      // Lets a rollback (or any deploy) be verified from the outside: which
-      // code actually answered this request, not just "the deploy command
-      // exited 0". Supabase injects DENO_DEPLOYMENT_ID per function version.
-      'x-deployment-id': Deno.env.get('DENO_DEPLOYMENT_ID') ?? 'unknown',
-      ...CORS_HEADERS,
-      ...(('headers' in result ? result.headers : undefined) ?? {}),
-    },
-  });
+      );
+    } catch (err) {
+      if (isPoolExhausted(err)) {
+        const stale = cacheable ? currentCache.get(cacheKey) : undefined;
+        if (stale) return toResponse(stale.result, true);
+        result = {
+          ...errorResponse(503, 'SERVICE_UNAVAILABLE', 'The database is busy, please retry shortly.'),
+          headers: { 'retry-after': '2' },
+        };
+      } else {
+        result = errorResponse(500, 'INTERNAL_ERROR', (err as Error).message ?? 'An unexpected error occurred.');
+      }
+    }
+  }
+  if (cacheable && result.status === 200) {
+    if (currentCache.size >= 500) currentCache.clear();
+    currentCache.set(cacheKey, { at: Date.now(), result });
+  }
+  return toResponse(result, cacheable && result.status === 200);
 });

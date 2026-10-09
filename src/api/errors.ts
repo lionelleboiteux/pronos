@@ -11,7 +11,8 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'UNAUTHORIZED'
   | 'CONFLICT'
-  | 'INTERNAL_ERROR';
+  | 'INTERNAL_ERROR'
+  | 'SERVICE_UNAVAILABLE';
 
 export type ApiResponse = { status: number; body: Record<string, unknown> };
 
