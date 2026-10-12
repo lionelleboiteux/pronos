@@ -4,7 +4,7 @@ A football prediction game automation system that consolidates and automates a 1
 
 ## Overview
 
-Players submit score predictions for matches in their league of choice before kickoff. The system locks submissions at match start (server-side, never trusting the client) and, once results are recorded, computes scores (5 points for exact prediction, 3 for correct result, 2 for correct goal differential, 0 otherwise) and ranks players by points. It detects near-duplicate player pseudos (typos like "Lio_92" vs "Lio92") for manual review, and provides an admin interface for manual overrides. See "Current Status" below for what's actually wired versus still pending.
+Players submit score predictions for matches in their league of choice before kickoff. The system locks submissions at match start (server-side, never trusting the client) and, once results are recorded, computes scores (5 points for the exact score, 3 for the correct result plus the correct goal difference, 2 for the correct result only, 0 otherwise) and ranks players by points. It detects near-duplicate player pseudos (typos like "Lio_92" vs "Lio92") for manual review, and provides an admin interface for manual overrides. See "Current Status" below for what's actually wired versus still pending.
 
 The game runs weekly during the football season across ~10-20 players per league. Success is measured by reducing weekly admin time from ~1 hour to under 5 minutes.
 
