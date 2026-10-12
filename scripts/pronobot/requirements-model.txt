@@ -1,0 +1,5 @@
+# predict_model.py imports predict.py for its shared HTTP helpers, which pulls in typesafe_sdk.
+requests
+typesafe-sdk==0.7.1
+numpy
+scipy

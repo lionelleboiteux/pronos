@@ -1,0 +1,37 @@
+name: PronoBot-DC predictions
+
+# Runs 🤖PronoBot-DC, a second automated player that predicts with a
+# Dixon-Coles goals model + expected-points picker
+# (scripts/pronobot/predict_model.py) so it can be compared head to head
+# with the Jev-based 🤖PronoBot on live games. Same public API, no DB
+# access, no secrets: training data is football-data.co.uk's free CSVs.
+#
+# Hourly at :20, five minutes after pronobot.yml. Idempotent per game
+# (acts only on games with no `my_prediction` for its own pseudo).
+
+on:
+  schedule:
+    - cron: '20 * * * *'
+  workflow_dispatch: {}
+
+env:
+  PRONOS_API_BASE: https://dmytkubjxwwwkroutvdu.supabase.co/functions/v1/api
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scripts/pronobot/requirements-model.txt
+
+      - name: Install dependencies
+        run: pip install --disable-pip-version-check -r scripts/pronobot/requirements-model.txt
+
+      - name: Predict this gameweek's matches
+        working-directory: scripts/pronobot
+        run: python3 predict_model.py

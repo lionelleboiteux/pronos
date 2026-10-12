@@ -81,8 +81,8 @@ def get_leagues() -> list[dict]:
     return r.json()["data"]
 
 
-def get_current(league_id: str) -> dict:
-    r = _get(f"{API_BASE}/v1/leagues/{league_id}/current", params={"pseudo": BOT_PSEUDO})
+def get_current(league_id: str, pseudo: str = BOT_PSEUDO) -> dict:
+    r = _get(f"{API_BASE}/v1/leagues/{league_id}/current", params={"pseudo": pseudo})
     r.raise_for_status()
     return r.json()
 
@@ -219,15 +219,21 @@ def _post_with_retry(url: str, body: dict, label: str) -> requests.Response | No
 
 
 def submit_prediction(
-    league_id: str, game_id: str, home_goals: int, away_goals: int, dry_run: bool
+    league_id: str,
+    game_id: str,
+    home_goals: int,
+    away_goals: int,
+    dry_run: bool,
+    pseudo: str = BOT_PSEUDO,
+    email: str = BOT_EMAIL,
 ) -> bool:
     if dry_run:
         return True
     body = {
         "league_id": league_id,
         "game_id": game_id,
-        "pseudo": BOT_PSEUDO,
-        "email": BOT_EMAIL,
+        "pseudo": pseudo,
+        "email": email,
         "predicted_home_score": home_goals,
         "predicted_away_score": away_goals,
     }
@@ -240,15 +246,21 @@ def submit_prediction(
     return True
 
 
-def send_gameweek_receipt(league_id: str, gameweek_id: str, dry_run: bool) -> None:
+def send_gameweek_receipt(
+    league_id: str,
+    gameweek_id: str,
+    dry_run: bool,
+    pseudo: str = BOT_PSEUDO,
+    email: str = BOT_EMAIL,
+) -> None:
     """One consolidated email of everything predicted in this run, to
     BOT_EMAIL -- mirrors the frontend's own post-submission call
     (frontend/index.html), sent once per league per run that actually
     submitted something new (never on an idle "nothing new" run)."""
     if dry_run:
-        print(f"    [dry-run] would request a gameweek receipt to {BOT_EMAIL}")
+        print(f"    [dry-run] would request a gameweek receipt to {email}")
         return
-    body = {"pseudo": BOT_PSEUDO, "email": BOT_EMAIL}
+    body = {"pseudo": pseudo, "email": email}
     r = _post_with_retry(
         f"{API_BASE}/v1/leagues/{league_id}/gameweeks/{gameweek_id}/receipt", body, "receipt request"
     )
@@ -258,7 +270,7 @@ def send_gameweek_receipt(league_id: str, gameweek_id: str, dry_run: bool) -> No
         print(f"    receipt request failed ({r.status_code}): {r.text[:200]}")
         return
     sent = r.json().get("email_sent")
-    print(f"    gameweek receipt {'sent' if sent else 'requested but not sent'} to {BOT_EMAIL}")
+    print(f"    gameweek receipt {'sent' if sent else 'requested but not sent'} to {email}")
 
 
 def run(dry_run: bool) -> None:
