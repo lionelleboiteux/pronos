@@ -123,3 +123,17 @@ describe('POST /v1/ingest/fixtures — last-5-form recompute targeting', () => {
     expect(recomputed).not.toContain(OTHER_AWAY);
   });
 });
+
+describe('POST /v1/ingest/fixtures — postponed games', () => {
+  it('accepts a postponed game (no score) and never recomputes team form for it', async () => {
+    const { deps, recomputed } = buildDeps();
+
+    const res = await handleSyncFixtures(
+      { authorization: 'Bearer x', body: { games: [game({ status: 'postponed' })] } },
+      deps,
+    );
+
+    expect(res.status).toBe(200);
+    expect(recomputed).toEqual([]);
+  });
+});

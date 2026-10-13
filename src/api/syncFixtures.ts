@@ -31,7 +31,7 @@ export type FixtureInput = {
   away_team_id: string;
   external_id: string;
   starts_at: string;
-  status: 'scheduled' | 'finished';
+  status: 'scheduled' | 'finished' | 'postponed';
   home_team_score: number | null;
   away_team_score: number | null;
 };
@@ -56,7 +56,7 @@ const FixtureSchema = z.object({
   away_team_id: z.uuid(),
   external_id: z.string().min(1),
   starts_at: z.iso.datetime({ offset: true }),
-  status: z.enum(['scheduled', 'finished']),
+  status: z.enum(['scheduled', 'finished', 'postponed']),
   home_team_score: z.number().int().min(0).nullable(),
   away_team_score: z.number().int().min(0).nullable(),
 });

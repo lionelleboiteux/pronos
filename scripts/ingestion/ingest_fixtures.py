@@ -41,8 +41,23 @@ LEAGUE_KEY_BY_CODE = {
     "LL": "laliga",
 }
 
+# Upstream statuses for a match that was called off and has no result: the
+# API reports a placeholder 0-0 for these, which must never be scored.
+POSTPONED_UPSTREAM_STATUSES = {"abandoned", "postponed", "cancelled", "canceled"}
+
+# games.status values that no longer hold up scoring a gameweek.
+SETTLED_STATUSES = {"finished", "postponed"}
+
 session = requests.Session()
 session.headers["User-Agent"] = "pronos-ingest/1.0"
+
+
+def fixture_status(fixture) -> str:
+    if fixture.finished:
+        return "finished"
+    if (fixture.status or "").strip().lower() in POSTPONED_UPSTREAM_STATUSES:
+        return "postponed"
+    return "scheduled"
 
 
 def get_leagues() -> list[dict]:
@@ -64,6 +79,17 @@ def get_current_state(league_id: str) -> dict | None:
     return body if body.get("gameweek") else None
 
 
+def get_gameweek_state(league_id: str, number: int) -> dict | None:
+    """Read-only history for an earlier gameweek of the open season (the API
+    only serves gameweeks before the current one this way)."""
+    r = session.get(
+        f"{API_BASE}/v1/leagues/{league_id}/current", params={"gameweek": number}, timeout=15
+    )
+    r.raise_for_status()
+    body = r.json()
+    return body if body.get("gameweek") else None
+
+
 def match_team_id(name: str, teams: list[dict]) -> str | None:
     best_id, best_score = None, 0.0
     for team in teams:
@@ -78,19 +104,56 @@ def target_gameweek_number(league_id: str) -> int:
     already finished and no open gameweek is set yet."""
     state = get_current_state(league_id)
     if state and state["games"]:
-        if any(g["game"]["status"] != "finished" for g in state["games"]):
+        if any(g["game"]["status"] not in SETTLED_STATUSES for g in state["games"]):
             return state["gameweek"]["number"]
         return state["gameweek"]["number"] + 1
     return 1
 
 
+def lagging_gameweek_number(league_id: str, target: int) -> int | None:
+    """The gameweek just before `target`, if it still has unsettled games.
+
+    The DB advances to the next gameweek as soon as the last match of the
+    current one *kicks off*, but that match is only finished ~2h later — by
+    then `target_gameweek_number` already points at the next gameweek, so the
+    final results of the one before would never be fetched and it could never
+    be scored (La Liga gameweek 8: Levante-Sevilla stayed 'scheduled' after
+    finishing 3-3). Re-checking the previous gameweek until everything in it
+    is settled closes that gap.
+    """
+    if target <= 1:
+        return None
+    state = get_gameweek_state(league_id, target - 1)
+    if not state:
+        return None
+    unsettled = any(g["game"]["status"] not in SETTLED_STATUSES for g in state["games"])
+    return target - 1 if unsettled else None
+
+
 def build_payload(league_code: str, league_id: str, teams: list[dict]) -> list[dict]:
     football_key = LEAGUE_KEY_BY_CODE[league_code]
-    number = target_gameweek_number(league_id)
+    target = target_gameweek_number(league_id)
+    numbers = [target]
+    lagging = lagging_gameweek_number(league_id, target)
+    if lagging is not None:
+        print(f"  [{league_code}] gameweek {lagging} still has unsettled games, re-syncing it too")
+        numbers.insert(0, lagging)
 
+    games = []
     with Football() as football:
-        fixtures = football.get_gameweek(football_key, number)
+        for number in numbers:
+            games.extend(
+                fixtures_to_games(
+                    football_key, league_code, league_id, number, teams,
+                    football.get_gameweek(football_key, number),
+                )
+            )
+    return games
 
+
+def fixtures_to_games(
+    football_key: str, league_code: str, league_id: str, number: int, teams: list[dict], fixtures: list
+) -> list[dict]:
     games = []
     for fixture in fixtures:
         if fixture.kickoff is None:
@@ -100,6 +163,7 @@ def build_payload(league_code: str, league_id: str, teams: list[dict]) -> list[d
         if not home_id or not away_id:
             print(f"  [{league_code}] skipping unmatched fixture: {fixture.home} v {fixture.away}")
             continue
+        status = fixture_status(fixture)
         external_id = str(fixture.id) if fixture.id is not None else (
             f"{football_key}-gw{number}-{fixture.home}-{fixture.away}"
         )
@@ -110,9 +174,9 @@ def build_payload(league_code: str, league_id: str, teams: list[dict]) -> list[d
             "away_team_id": away_id,
             "external_id": external_id,
             "starts_at": fixture.kickoff.isoformat(),
-            "status": "finished" if fixture.finished else "scheduled",
-            "home_team_score": fixture.home_score,
-            "away_team_score": fixture.away_score,
+            "status": status,
+            "home_team_score": None if status == "postponed" else fixture.home_score,
+            "away_team_score": None if status == "postponed" else fixture.away_score,
         })
     return games
 

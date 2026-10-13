@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### La Liga gameweek 8 never scored (2026-10-13)
+
+**La Liga J8 had no classement: 8 of 10 games `finished`, gameweek already advanced to J9, scoring waiting forever.** Two independent causes, each enough on its own:
+
+- **Final results of a gameweek that already advanced were never fetched.** The tick moves a league to the next gameweek as soon as the last match *kicks off* (when that gameweek's row already exists), but that match only finishes ~2h later. `ingest_fixtures.py` only syncs the *current* gameweek, so Levante–Sevilla (3-3, Monday 19:00 UTC) stayed `scheduled` and J8 could never reach `all_games_finished`. `ingest_fixtures.py` now also re-syncs the previous gameweek while it still has unsettled games.
+- **An abandoned match blocked the whole gameweek.** Rayo–Athletic was `Abandoned` upstream with a placeholder 0-0; the ingest only knew `scheduled`/`finished`, so it sat `scheduled` forever. Added a `postponed` status (abandoned/postponed/cancelled upstream): ingest sends it with null scores, `all_games_finished` treats it as settled, and scoring treats it as no result (never scoring the placeholder 0-0).
+- **Live data:** J8 backfilled by hand — Levante–Sevilla set to 3-3 finished, Rayo–Athletic set to `postponed`, then 22 players scored (312 points), overall standings refreshed. The ingest/Edge Function changes still need deploying.
+- **Known gap:** if the abandoned match is replayed inside J8, nothing triggers a rescore of J8 (the staleness check only looks at predictions) — needs an admin `rescore`.
+
 ### Adopt Gate
 
 **Initial project scope and success metrics.**

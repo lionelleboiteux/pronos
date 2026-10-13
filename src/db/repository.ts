@@ -178,6 +178,12 @@ export function createRepository(pool: QueryExecutor) {
    * `already_completed` flag so a retried/overlapping cron tick can't
    * double-run it (runScoring's own no-op guard, scoringRun.ts).
    *
+   * A `postponed` game (abandoned, postponed or cancelled upstream — it has
+   * no result and no date it will be played by) counts as settled for the
+   * readiness gate and scores as "no result", so it can't hold the whole
+   * gameweek's classement hostage — confirmed live on La Liga gameweek 8,
+   * where an abandoned Rayo–Athletic left the gameweek permanently unscored.
+   *
    * Returns whether scoring actually ran, so callers (the admin override
    * response, in particular) don't report success for a silent no-op.
    */
@@ -188,7 +194,7 @@ export function createRepository(pool: QueryExecutor) {
   ): Promise<boolean> {
     const gw = await pool.query(
       `select gw.league_id, gw.season_id,
-              coalesce(bool_and(g.status = 'finished'), false) as all_games_finished
+              coalesce(bool_and(g.status in ('finished', 'postponed')), false) as all_games_finished
          from gameweeks gw left join games g on g.gameweek_id = gw.id
         where gw.id = $1 group by gw.id`,
       [gameweek_id],
@@ -199,7 +205,8 @@ export function createRepository(pool: QueryExecutor) {
     const predictions = await pool.query(
       `select pr.player_id, p.pseudo, pr.game_id,
               pr.pred_home_team_score, pr.pred_away_team_score,
-              g.home_team_score, g.away_team_score
+              case when g.status = 'postponed' then null else g.home_team_score end as home_team_score,
+              case when g.status = 'postponed' then null else g.away_team_score end as away_team_score
          from predictions pr
          join players p on p.id = pr.player_id
          join games g on g.id = pr.game_id

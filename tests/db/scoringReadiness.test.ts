@@ -135,6 +135,42 @@ describe('scoring readiness (all games finished, not just kickoff passed)', () =
   });
 });
 
+describe('postponed / abandoned games do not hold the gameweek hostage', () => {
+  it('scores the gameweek once every other game is finished, treating the postponed game as no result', async () => {
+    const { client } = db();
+    const repo = createRepository(client);
+    const ids = await seedLeague(client, { code: 'sr-pp', name: 'Scoring Readiness League PP' });
+    const player = await seedPlayer(client, 'ReadinessPlayerPP');
+
+    // The upstream API reports a placeholder 0-0 for an abandoned match; a
+    // prediction of 0-0 on it must NOT score as an exact result.
+    const game2 = await client.query(
+      `insert into games (season_id, league_id, gameweek_id, home_team_id, away_team_id, starts_at,
+                          status, home_team_score, away_team_score)
+       values ($1, $2, $3, $4, $5, $6, 'postponed', 0, 0) returning id`,
+      [ids.season_id, ids.league_id, ids.gameweek_id, ids.away_team_id, ids.home_team_id, '2026-08-10T19:00:00Z'],
+    );
+    await insertPrediction(client, ids, player, 2, 1);
+    await client.query(
+      `insert into predictions (player_id, game_id, gameweek_id, season_id, league_id, pred_home_team_score, pred_away_team_score)
+       values ($1, $2, $3, $4, $5, 0, 0)`,
+      [player, game2.rows[0].id, ids.gameweek_id, ids.season_id, ids.league_id],
+    );
+    await client.query(
+      `update games set status = 'finished', home_team_score = 2, away_team_score = 1 where id = $1`,
+      [ids.game_id],
+    );
+
+    await repo.runScoringForGameweek(ids.gameweek_id, new Date('2026-08-11T00:00:00Z'));
+
+    const standings = await client.query(
+      `select points from league_gameweek_standings where gameweek_id = $1 and player_id = $2`,
+      [ids.gameweek_id, player],
+    );
+    expect(standings.rows).toEqual([{ points: 5 }]); // only the finished game; postponed 0-0 not scored
+  });
+});
+
 describe('automatic rescoring after a retroactive prediction backfill (no manual admin rescore needed)', () => {
   it('runScoringForGameweek rescores once a prediction is inserted directly into Postgres after the gameweek was already scored', async () => {
     const { client } = db();
