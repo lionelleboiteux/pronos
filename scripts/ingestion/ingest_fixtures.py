@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -47,6 +48,10 @@ POSTPONED_UPSTREAM_STATUSES = {"abandoned", "postponed", "cancelled", "canceled"
 
 # games.status values that no longer hold up scoring a gameweek.
 SETTLED_STATUSES = {"finished", "postponed"}
+
+# How long past kickoff a still-'scheduled' game may be missing upstream
+# before it's declared vanished (covers a feed that briefly drops a live match).
+VANISHED_GRACE = timedelta(hours=3)
 
 session = requests.Session()
 session.headers["User-Agent"] = "pronos-ingest/1.0"
@@ -130,6 +135,69 @@ def lagging_gameweek_number(league_id: str, target: int) -> int | None:
     return target - 1 if unsettled else None
 
 
+def get_db_gameweek(league_id: str, number: int) -> dict | None:
+    """The DB's games for one gameweek, whether it's the open one or an earlier one."""
+    state = get_current_state(league_id)
+    if state and state["gameweek"]["number"] == number:
+        return state
+    return get_gameweek_state(league_id, number)
+
+
+def vanished_games(
+    league_code: str, db_state: dict | None, fixtures: list, teams: list[dict], now: datetime
+) -> list[dict]:
+    """Payload rows that settle 'scheduled' DB games the upstream feed no longer lists.
+
+    A game ingested from an earlier fixture list that upstream later dropped
+    (Levante-Athletic in La Liga gameweek 9) is never touched again: the
+    upsert only writes games upstream still returns. It then stays 'scheduled'
+    forever, so `target_gameweek_number` never advances past its gameweek.
+    Such games are re-posted as 'postponed' (settled, never scored).
+
+    Games are paired with upstream by (home, away) team, the same key the
+    Edge Function's upsert falls back on, so a rescheduled match is not
+    mistaken for a vanished one. Bails out (flags nothing) if upstream gave an
+    empty list or any upstream fixture couldn't be matched to a team, since
+    the comparison would then be unreliable.
+    """
+    if not db_state or not fixtures:
+        return []
+    upstream_pairs = set()
+    for fixture in fixtures:
+        home_id, away_id = match_team_id(fixture.home, teams), match_team_id(fixture.away, teams)
+        if not home_id or not away_id:
+            return []
+        upstream_pairs.add((home_id, away_id))
+
+    number = db_state["gameweek"]["number"]
+    rows = []
+    for entry in db_state["games"]:
+        game = entry["game"]
+        if game["status"] != "scheduled":
+            continue
+        if (game["home_team"]["id"], game["away_team"]["id"]) in upstream_pairs:
+            continue
+        starts_at = datetime.fromisoformat(game["starts_at"])
+        if now - starts_at < VANISHED_GRACE:
+            continue
+        print(
+            f"  [{league_code}] gameweek {number}: {game['home_team']['name']} v "
+            f"{game['away_team']['name']} is no longer listed upstream, marking postponed"
+        )
+        rows.append({
+            "league_id": db_state["league"]["id"],
+            "gameweek_number": number,
+            "home_team_id": game["home_team"]["id"],
+            "away_team_id": game["away_team"]["id"],
+            "external_id": f"vanished-{game['id']}",
+            "starts_at": game["starts_at"],
+            "status": "postponed",
+            "home_team_score": None,
+            "away_team_score": None,
+        })
+    return rows
+
+
 def build_payload(league_code: str, league_id: str, teams: list[dict]) -> list[dict]:
     football_key = LEAGUE_KEY_BY_CODE[league_code]
     target = target_gameweek_number(league_id)
@@ -140,13 +208,15 @@ def build_payload(league_code: str, league_id: str, teams: list[dict]) -> list[d
         numbers.insert(0, lagging)
 
     games = []
+    now = datetime.now(timezone.utc)
     with Football() as football:
         for number in numbers:
+            fixtures = football.get_gameweek(football_key, number)
             games.extend(
-                fixtures_to_games(
-                    football_key, league_code, league_id, number, teams,
-                    football.get_gameweek(football_key, number),
-                )
+                fixtures_to_games(football_key, league_code, league_id, number, teams, fixtures)
+            )
+            games.extend(
+                vanished_games(league_code, get_db_gameweek(league_id, number), fixtures, teams, now)
             )
     return games
 
