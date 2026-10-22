@@ -43,6 +43,7 @@ describe('api cache worker', () => {
     const second = await handle(get('/v1/teams/form?name=OM&league=L1'), h.deps);
     expect(first.headers.get('x-edge-cache')).toBe('MISS');
     expect(second.headers.get('x-edge-cache')).toBe('HIT');
+    expect(second.headers.get('cache-control')).toBe('public, max-age=3600');
     expect(h.origin).toHaveLength(1);
     expect(h.origin[0]).toBe(
       'https://dmytkubjxwwwkroutvdu.supabase.co/functions/v1/api/v1/teams/form?league=L1&name=OM',

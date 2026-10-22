@@ -59,7 +59,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   const key = new Request(url.origin + url.pathname + '?' + new URLSearchParams(params).toString());
 
   const hit = await deps.cache.match(key);
-  if (hit) return withCors(hit, { 'x-edge-cache': 'HIT' });
+  // The zone's Browser Cache TTL rewrites a stored entry's max-age up to 4h on
+  // the way out; restate the intended browser TTL so /current isn't held stale.
+  if (hit) return withCors(hit, { 'cache-control': `public, max-age=${ttl}`, 'x-edge-cache': 'HIT' });
 
   const res = await deps.fetchOrigin(new Request(ORIGIN + url.pathname + '?' + new URLSearchParams(params), { method: 'GET' }));
   // Never cache errors (404 for an unknown team, 503 when the DB is busy).
