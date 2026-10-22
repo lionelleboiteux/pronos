@@ -24,7 +24,7 @@ import requests
 from typesafe_sdk import Choice, Score, TypeSafeClient, TypeSafeError
 
 API_BASE = os.environ.get(
-    "PRONOS_API_BASE", "https://dmytkubjxwwwkroutvdu.supabase.co/functions/v1/api"
+    "PRONOS_API_BASE", "https://api.fantasy-coach.fr"
 ).rstrip("/")
 
 # Must stay byte-identical across every run: `my_prediction` matching in

@@ -293,7 +293,7 @@
 (function () {
   // ?api=<url> overrides the default for local/dev testing only; never
   // persisted, so production use is unaffected.
-  var API_BASE = new URLSearchParams(location.search).get('api') || 'https://dmytkubjxwwwkroutvdu.supabase.co/functions/v1/api';
+  var API_BASE = new URLSearchParams(location.search).get('api') || 'https://api.fantasy-coach.fr';
   var PSEUDO_KEY = 'pronos.pseudo'; // same key/semantics as src/client/pseudoMemory.ts
   var EMAIL_KEY = 'pronos.email'; // same key/semantics as src/client/emailMemory.ts
 

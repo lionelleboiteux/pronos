@@ -65,10 +65,16 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   // Never cache errors (404 for an unknown team, 503 when the DB is busy).
   if (res.status !== 200) return res;
 
+  // Supabase's gateway adds a Cloudflare `__cf_bm` Set-Cookie, and the Cache
+  // API refuses to store any response carrying one. These routes are public
+  // and cookie-free, so drop it from both the stored and returned copy.
   const cacheable = new Response(res.clone().body, res);
+  cacheable.headers.delete('set-cookie');
   cacheable.headers.set('cache-control', `public, max-age=${ttl}, s-maxage=${ttl}`);
   deps.waitUntil(deps.cache.put(key, cacheable));
-  return withCors(res, { 'cache-control': `public, max-age=${ttl}`, 'x-edge-cache': 'MISS' });
+  const out = withCors(res, { 'cache-control': `public, max-age=${ttl}`, 'x-edge-cache': 'MISS' });
+  out.headers.delete('set-cookie');
+  return out;
 }
 
 export default {

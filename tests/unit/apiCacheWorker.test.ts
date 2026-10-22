@@ -49,6 +49,18 @@ describe('api cache worker', () => {
     );
   });
 
+  it('strips Supabase gateway cookies, which would stop the Cache API storing the entry', async () => {
+    const h = harness();
+    h.deps.fetchOrigin = async () =>
+      new Response('{}', { headers: { 'set-cookie': '__cf_bm=x; Path=/', 'content-type': 'application/json' } });
+    let stored: Response | undefined;
+    h.deps.cache.put = async (_r, res) => void (stored = res);
+    const res = await handle(get('/v1/teams/form?league=L1&name=OM'), h.deps);
+    await h.settle();
+    expect(res.headers.get('set-cookie')).toBeNull();
+    expect(stored?.headers.get('set-cookie')).toBeNull();
+  });
+
   it('does not cache non-200 responses', async () => {
     const h = harness(404);
     await handle(get('/v1/teams/form?league=L1&name=Nope'), h.deps);
