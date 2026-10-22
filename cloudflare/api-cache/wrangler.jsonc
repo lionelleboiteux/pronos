@@ -1,0 +1,8 @@
+{
+  "name": "pronos-api-cache",
+  "main": "index.ts",
+  "compatibility_date": "2026-10-01",
+  // Serve the API from api.fantasy-coach.fr (zone must be on the same
+  // Cloudflare account that deploys this Worker).
+  "routes": [{ "pattern": "api.fantasy-coach.fr", "custom_domain": true }]
+}

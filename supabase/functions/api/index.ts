@@ -226,5 +226,10 @@ Deno.serve(async (req) => {
     if (currentCache.size >= 500) currentCache.clear();
     currentCache.set(cacheKey, { at: Date.now(), result });
   }
+  // A team's last-5 results only change when a match ends, so browsers can
+  // keep them for an hour instead of re-invoking the function per widget.
+  if (req.method === 'GET' && pathname === '/v1/teams/form' && result.status === 200) {
+    result = { ...result, headers: { 'cache-control': 'public, max-age=3600', ...(result.headers ?? {}) } };
+  }
   return toResponse(result, cacheable && result.status === 200);
 });
