@@ -1,13 +1,13 @@
-name: PronoBot-DC predictions
+name: PronoBot predictions
 
-# Runs 🤖PronoBot-DC, a second automated player that predicts with a
-# Dixon-Coles goals model + expected-points picker
-# (scripts/pronobot/predict_model.py) so it can be compared head to head
-# with the Jev-based 🤖PronoBot on live games. Same public API, no DB
-# access, no secrets: training data is football-data.co.uk's free CSVs.
+# Runs 🤖PronoBot, the automated player that predicts with a Dixon-Coles
+# goals model + expected-points picker (scripts/pronobot/predict_model.py).
+# Same public API, no DB access, no secrets: training data is
+# football-data.co.uk's free CSVs. The earlier Jev-based bot used the same
+# pseudo; its workflow was retired.
 #
-# Hourly at :20, five minutes after pronobot.yml. Idempotent per game
-# (acts only on games with no `my_prediction` for its own pseudo).
+# Hourly at :20. Idempotent per game (acts only on games with no
+# `my_prediction` for this pseudo).
 
 on:
   schedule:

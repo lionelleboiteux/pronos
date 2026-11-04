@@ -1,6 +1,6 @@
-"""PronoBot-DC — a second automated player that predicts with a Dixon-Coles
-goals model + expected-points picker (model.py) instead of Jev, so the two
-approaches can be compared head to head on live games. Run by
+"""PronoBot — the automated player, predicting with a Dixon-Coles goals model
++ expected-points picker (model.py). Replaced the Jev-based bot (predict.py,
+same pseudo). Run by
 .github/workflows/pronobot-model.yml.
 
 Same contract as predict.py: only the public HTTP API, one POST per game,
@@ -24,7 +24,7 @@ import model
 import predict as base  # shared HTTP helpers (retry, pacing, submit, receipt)
 from team_names import LEAGUE_TO_FD, resolve
 
-BOT_PSEUDO = "🤖PronoBot-DC"  # must stay byte-identical across runs
+BOT_PSEUDO = "🤖PronoBot"  # must stay byte-identical across runs
 
 DECAY_PER_DAY = 0.0019  # half-life ~365 days; backtest was flat 0.001-0.003
 REGULARISATION = 1.0
@@ -144,7 +144,7 @@ def run(dry_run: bool) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="PronoBot-DC: predict open matches with the Dixon-Coles model.")
+    ap = argparse.ArgumentParser(description="PronoBot: predict open matches with the Dixon-Coles model.")
     ap.add_argument("--dry-run", action="store_true", help="Print picks, don't POST anything.")
     run(ap.parse_args().dry_run)
 
