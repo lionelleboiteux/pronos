@@ -17,7 +17,14 @@ export type StoredPrediction = {
   submitted_at: Date;
 };
 
-export type TeamRecord = { id: string; name: string; code: string; logo_url: string | null };
+export type TeamRecord = {
+  id: string;
+  name: string;
+  code: string;
+  short_name: string | null;
+  display_code: string | null;
+  logo_url: string | null;
+};
 
 export type LeagueCurrentState = {
   league: { id: string; code: string; name: string; logo_url: string | null };

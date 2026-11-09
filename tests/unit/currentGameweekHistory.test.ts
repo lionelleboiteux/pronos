@@ -12,8 +12,8 @@ describe('GET /v1/leagues/{id}/current ?gameweek=N (read-only history)', () => {
       games: [
         {
           id: 'g1',
-          home_team: { id: 'h', name: 'H', code: 'H', logo_url: null },
-          away_team: { id: 'a', name: 'A', code: 'A', logo_url: null },
+          home_team: { id: 'h', name: 'H', code: 'H', short_name: null, display_code: null, logo_url: null },
+          away_team: { id: 'a', name: 'A', code: 'A', short_name: null, display_code: null, logo_url: null },
           starts_at: new Date('2026-09-01T18:00:00Z'),
           status: 'finished',
           home_team_score: 2,

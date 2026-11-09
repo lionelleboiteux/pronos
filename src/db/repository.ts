@@ -605,8 +605,8 @@ export function createRepository(pool: QueryExecutor) {
 
       const games = await pool.query(
         `select g.id, g.starts_at, g.status, g.home_team_score, g.away_team_score,
-                h.id as home_id, h.name as home_name, h.code as home_code, h.logo_url as home_logo,
-                a.id as away_id, a.name as away_name, a.code as away_code, a.logo_url as away_logo
+                h.id as home_id, h.name as home_name, h.code as home_code, h.short_name as home_short_name, h.display_code as home_display_code, h.logo_url as home_logo,
+                a.id as away_id, a.name as away_name, a.code as away_code, a.short_name as away_short_name, a.display_code as away_display_code, a.logo_url as away_logo
            from games g
            join teams h on h.id = g.home_team_id
            join teams a on a.id = g.away_team_id
@@ -634,8 +634,22 @@ export function createRepository(pool: QueryExecutor) {
         },
         games: games.rows.map((g) => ({
           id: g.id,
-          home_team: { id: g.home_id, name: g.home_name, code: g.home_code, logo_url: g.home_logo },
-          away_team: { id: g.away_id, name: g.away_name, code: g.away_code, logo_url: g.away_logo },
+          home_team: {
+            id: g.home_id,
+            name: g.home_name,
+            code: g.home_code,
+            short_name: g.home_short_name,
+            display_code: g.home_display_code,
+            logo_url: g.home_logo,
+          },
+          away_team: {
+            id: g.away_id,
+            name: g.away_name,
+            code: g.away_code,
+            short_name: g.away_short_name,
+            display_code: g.away_display_code,
+            logo_url: g.away_logo,
+          },
           starts_at: g.starts_at,
           status: g.status,
           home_team_score: g.home_team_score,

@@ -229,11 +229,15 @@ paths:
                             id: 1a1a1a1a-0000-4a2b-9c3d-777777777777
                             name: Olympique de Marseille
                             code: OM
+                            short_name: Marseille
+                            display_code: OM
                             logo_url: 'https://cdn.pronos.example/teams/om.png'
                           away_team:
                             id: 2b2b2b2b-0000-4a2b-9c3d-888888888888
                             name: Paris Saint-Germain
                             code: PSG
+                            short_name: Paris SG
+                            display_code: PSG
                             logo_url: 'https://cdn.pronos.example/teams/psg.png'
                           starts_at: '2026-08-09T18:45:00Z'
                           status: in_play
@@ -251,11 +255,15 @@ paths:
                             id: 4d4d4d4d-0000-4a2b-9c3d-aaaaaaaaaaaa
                             name: AS Monaco
                             code: ASM
+                            short_name: Monaco
+                            display_code: ASM
                             logo_url: 'https://cdn.pronos.example/teams/asm.png'
                           away_team:
                             id: 5e5e5e5e-0000-4a2b-9c3d-bbbbbbbbbbbb
                             name: LOSC Lille
                             code: LOSC
+                            short_name: Lille
+                            display_code: LIL
                             logo_url: 'https://cdn.pronos.example/teams/losc.png'
                           starts_at: '2026-08-10T19:00:00Z'
                           status: scheduled
@@ -1069,7 +1077,7 @@ components:
 
     Team:
       type: object
-      required: [id, name, code, logo_url]
+      required: [id, name, code, short_name, display_code, logo_url]
       properties:
         id:
           type: string
@@ -1079,6 +1087,18 @@ components:
           example: Olympique de Marseille
         code:
           type: string
+          example: OM
+        short_name:
+          description: Hand-curated short/town name, the canonical label for tight layouts (null until seeded).
+          oneOf:
+            - type: string
+            - type: 'null'
+          example: Marseille
+        display_code:
+          description: Hand-curated 2-3 letter fan abbreviation (null until seeded).
+          oneOf:
+            - type: string
+            - type: 'null'
           example: OM
         logo_url:
           oneOf:
