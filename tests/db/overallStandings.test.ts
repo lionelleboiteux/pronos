@@ -12,7 +12,7 @@ import { seedLeague, seedPlayer, insertPrediction, startTestDatabase, type TestD
  * `src/api/tick.ts` makes on every automatic gameweek close.
  *
  * `getOverallStandings` itself is also covered here: beyond the season
- * total, it returns the up-to-10 most recently scored gameweeks and each
+ * total, it returns every scored gameweek of the season and each
  * player's points broken down per gameweek — the per-gameweek columns the
  * old spreadsheet-era site's "Classement général" showed alongside the total.
  */

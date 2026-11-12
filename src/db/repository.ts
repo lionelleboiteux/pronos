@@ -61,8 +61,7 @@ export type StandingsPage = {
 /**
  * `getOverallStandings`'s response — the season total plus, per NFR from the
  * old spreadsheet-era site, each player's score broken down by gameweek.
- * `gameweeks` is the up-to-10 most recently *scored* gameweeks (oldest
- * first); every row's `gameweek_points` is index-aligned to it, with null
+ * `gameweeks` is every *scored* gameweek of the season (oldest first); every row's `gameweek_points` is index-aligned to it, with null
  * where that player has no league_gameweek_standings row for that gameweek
  * (not scored yet, or no prediction that week).
  */
@@ -793,13 +792,10 @@ export function createRepository(pool: QueryExecutor) {
               select 1 from league_gameweek_standings lgs
                where lgs.gameweek_id = gw.id and lgs.season_id = $1
             )
-          order by gw.number desc
-          limit 10`,
+          order by gw.number asc`,
         [season_id],
       );
-      const gameweeks = gwRes.rows
-        .map((r) => ({ gameweek_id: r.id as string, number: r.number as number }))
-        .sort((a, b) => a.number - b.number);
+      const gameweeks = gwRes.rows.map((r) => ({ gameweek_id: r.id as string, number: r.number as number }));
 
       const res = await pool.query(
         `select s.player_id, p.pseudo, s.points, s.rank, s.predictions_count,

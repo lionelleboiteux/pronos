@@ -137,6 +137,21 @@
   .league-logo-card-img { width: 84px; height: 84px; object-fit: contain; }
   .league-logo-card-name { margin: 0; font-weight: 700; font-size: 1.05rem; }
   .classement-table .classement-pseudo { text-align: left; }
+  /* Pseudo + Total stay pinned on the left while the per-gameweek columns
+     (latest first, back to J1) scroll sideways. Sticky cells need an opaque
+     background so scrolled cells don't show through. */
+  .classement-table th:nth-child(1), .classement-table td:nth-child(1),
+  .classement-table th:nth-child(2), .classement-table td:nth-child(2) {
+    position: sticky; z-index: 1; box-sizing: border-box;
+  }
+  .classement-table th:nth-child(1), .classement-table td:nth-child(1) {
+    left: 0; width: 8.5rem; min-width: 8.5rem; max-width: 8.5rem; overflow: hidden; text-overflow: ellipsis;
+  }
+  .classement-table th:nth-child(2), .classement-table td:nth-child(2) {
+    left: 8.5rem; width: 3.6rem; min-width: 3.6rem; border-right: 2px solid var(--border);
+  }
+  .classement-table td.classement-pseudo { background: var(--card, #fff); }
+  .classement-rank { display: inline-block; min-width: 1.5rem; color: var(--muted); font-size: 0.8rem; }
   label { display: block; font-weight: 600; margin: 0.75rem 0 0.25rem; }
   .field-hint { font-size: 0.8rem; color: var(--muted); font-weight: 400; margin: 0.15rem 0 0; }
   input[type=text], input[type=email] {
@@ -530,24 +545,27 @@
         }
         var tableWrap = el('div', { class: 'classement-table-wrap' });
         var table = el('table', { class: 'hof-table classement-table' });
-        var headerCells = [el('th', { text: '#' }), el('th', { text: 'Pseudo' })];
-        gameweeks.forEach(function (gw) {
-          headerCells.push(el('th', { text: 'J' + gw.number }));
+        // Pseudo, Total, then the gameweeks newest first (the API sends them oldest first).
+        var latestFirst = gameweeks.map(function (gw, i) { return { gw: gw, i: i }; }).reverse();
+        var headerCells = [el('th', { text: 'Pseudo' }), el('th', { text: 'Total' })];
+        latestFirst.forEach(function (c) {
+          headerCells.push(el('th', { text: 'J' + c.gw.number }));
         });
-        headerCells.push(el('th', { text: 'Total' }));
         table.appendChild(el('thead', {}, [el('tr', {}, headerCells)]));
         var tbody = el('tbody');
         rows.forEach(function (r) {
           var cells = [
-            el('td', { text: r.rank != null ? String(r.rank) : '—' }),
-            el('td', { class: 'classement-pseudo', text: r.pseudo }),
+            el('td', { class: 'classement-pseudo' }, [
+              el('span', { class: 'classement-rank', text: r.rank != null ? String(r.rank) : '—' }),
+              document.createTextNode(r.pseudo),
+            ]),
+            el('td', { class: 'classement-score', text: String(r.points) }),
           ];
           var points = r.gameweek_points || [];
-          gameweeks.forEach(function (gw, i) {
-            var p = points[i];
+          latestFirst.forEach(function (c) {
+            var p = points[c.i];
             cells.push(el('td', { text: p == null ? '–' : String(p) }));
           });
-          cells.push(el('td', { class: 'classement-score', text: String(r.points) }));
           tbody.appendChild(el('tr', {}, cells));
         });
         table.appendChild(tbody);

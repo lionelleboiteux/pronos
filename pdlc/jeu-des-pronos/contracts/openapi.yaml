@@ -474,7 +474,9 @@ paths:
       summary: Get a season's overall classement
       description: |
         Public, read-only projection of `overall_standings` for one season
-        of one league, ordered by `rank` ascending.
+        of one league, ordered by `rank` ascending. `gameweeks` lists every
+        scored gameweek of the season (oldest first); each row's
+        `gameweek_points` is index-aligned to it.
       security: []
       parameters:
         - $ref: '#/components/parameters/LeagueIdPathParam'
