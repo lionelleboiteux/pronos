@@ -157,7 +157,7 @@
   .contact-spacer { height: 2.6rem; }
   .match {
     display: grid;
-    grid-template-columns: 1fr auto auto auto auto auto 1fr;
+    grid-template-columns: minmax(0, 1fr) auto auto auto auto auto minmax(0, 1fr);
     align-items: center;
     gap: 0.5rem;
     background: var(--card);
@@ -167,8 +167,11 @@
     margin-bottom: 0.5rem;
   }
   .match.locked { background: var(--locked-bg); opacity: 0.75; }
-  .match .home-name { text-align: right; font-size: 0.92rem; }
-  .match .away-name { text-align: left; font-size: 0.92rem; }
+  .match .home-name { text-align: right; font-size: 0.92rem; overflow-wrap: anywhere; }
+  .match .away-name { text-align: left; font-size: 0.92rem; overflow-wrap: anywhere; }
+  /* Full club name by default; the hand-curated short_name on phones, where
+     long names ("Borussia Mönchengladbach") can't fit beside the score inputs. */
+  .match .name-short { display: none; }
   .match img.crest { width: 28px; height: 28px; object-fit: contain; }
   .match .crest-fallback {
     width: 28px; height: 28px; border-radius: 50%;
@@ -188,6 +191,14 @@
   }
   .match input[type=number]:disabled { opacity: 0.6; }
   .match .dash { text-align: center; color: var(--muted); }
+  @media (max-width: 480px) {
+    .match { gap: 0.3rem; padding: 0.6rem 0.4rem; }
+    .match input[type=number] { box-sizing: border-box; width: 2.3rem; padding: 0.4rem 0.1rem; }
+    .match img.crest, .match .crest-fallback { width: 24px; height: 24px; }
+    .match .home-name, .match .away-name { font-size: 0.85rem; }
+    .match .name-full { display: none; }
+    .match .name-short { display: inline; }
+  }
   .match-meta {
     grid-column: 1 / -1;
     font-size: 0.72rem;
@@ -311,6 +322,14 @@
     }
     (children || []).forEach(function (c) { if (c) e.appendChild(c); });
     return e;
+  }
+
+  /* Full name plus short_name (when the API has one); CSS picks which to show. */
+  function teamName(cls, team) {
+    return el('div', { class: cls }, [
+      el('span', { class: 'name-full', text: team.name }),
+      el('span', { class: 'name-short', text: team.short_name || team.name }),
+    ]);
   }
 
   function fmtKickoff(iso) {
@@ -808,13 +827,13 @@
         awayInput.disabled = true;
       }
 
-      row.appendChild(el('div', { class: 'home-name', text: game.home_team.name }));
+      row.appendChild(teamName('home-name', game.home_team));
       row.appendChild(teamCrest(game.home_team));
       row.appendChild(homeInput);
       row.appendChild(el('span', { class: 'dash', text: '-' }));
       row.appendChild(awayInput);
       row.appendChild(teamCrest(game.away_team));
-      row.appendChild(el('div', { class: 'away-name', text: game.away_team.name }));
+      row.appendChild(teamName('away-name', game.away_team));
 
       var meta = el('div', {
         class: 'match-meta',
